@@ -1,0 +1,18 @@
+# Папки сборки и компиляции (бинарники)
+bin/
+obj/
+
+# Локальная база данных SQLite и её временные файлы
+*.db
+*.db-shm
+*.db-wal
+
+# Скрытые настройки Visual Studio и кэш IDE
+.vs/
+.idea/
+*.user
+*.suo
+.vscode/
+
+# Локальные файлы конфигурации (если вдруг появятся)
+appsettings.Development.json

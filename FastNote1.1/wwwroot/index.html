@@ -1,0 +1,462 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Notes Pro</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #fafafa);
+            --text: var(--tg-theme-text-color, #222);
+            --hint: var(--tg-theme-hint-color, #777);
+            --sec-bg: var(--tg-theme-secondary-bg-color, #fff);
+            --accent: var(--tg-theme-button-color, #3390ec);
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, system-ui, sans-serif;
+            margin: 0;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-settings {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            padding: 4px;
+            transition: transform 0.2s;
+        }
+
+            .btn-settings:active {
+                transform: rotate(45deg);
+            }
+
+        .notes-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .note-card {
+            background: var(--sec-bg);
+            border-radius: 16px;
+            padding: 14px;
+            position: relative;
+            border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            transition: transform 0.15s ease;
+            height: 120px;
+            overflow: hidden;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+            .note-card:active {
+                transform: scale(0.96);
+            }
+
+        .note-title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .note-content {
+            font-size: 12px;
+            opacity: 0.8;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .reminder-badge {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background-color: var(--accent);
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            box-shadow: 0 2px 6px rgba(51, 144, 236, 0.3);
+        }
+
+        /* Общие стили для оверлеев модалок */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            z-index: 100;
+            justify-content: center;
+            align-items: flex-end;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        .modal-content {
+            background: var(--sec-bg);
+            width: 100%;
+            height: 85%;
+            border-radius: 24px 24px 0 0;
+            padding: 24px;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.15);
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            transform: translateY(100%);
+            transition: transform 0.25s cubic-bezier(0.1, 0.7, 0.1, 1);
+        }
+
+        /* Поле изменения заголовка в заметке */
+        .title-input {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            outline: none;
+        }
+
+        textarea {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 16px;
+            font-family: inherit;
+            line-height: 1.5;
+            resize: none;
+            outline: none;
+            flex-grow: 1;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        .input-block {
+            margin-top: 10px;
+            padding: 12px;
+            background: rgba(0,0,0,0.02);
+            border-radius: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+            .input-block label {
+                font-size: 12px;
+                font-weight: bold;
+                opacity: 0.6;
+            }
+
+            .input-block select, .input-block input {
+                border: 1px solid rgba(0,0,0,0.1);
+                background: var(--sec-bg);
+                color: var(--text);
+                padding: 10px;
+                border-radius: 10px;
+                font-family: inherit;
+                font-size: 14px;
+                outline: none;
+            }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 14px;
+            border: none;
+            font-weight: bold;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .btn-save {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-close {
+            background: rgba(0,0,0,0.05);
+            color: var(--text);
+        }
+
+        .delete-btn {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 59, 48, 0.95);
+            color: white;
+            border-radius: 16px;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            z-index: 10;
+            animation: popIn 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes popIn {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h3>Мои заметки 📝</h3>
+        <button class="btn-settings" onclick="openSettings()">⚙️</button>
+    </div>
+
+    <div class="notes-grid" id="notesContainer"></div>
+
+    <div id="modalOverlay" class="overlay" onclick="closeModal()">
+        <div class="modal-content" id="modalContent" onclick="event.stopPropagation()">
+            <input type="text" id="noteTitle" class="title-input" placeholder="Заголовок">
+
+            <textarea id="noteEditor" placeholder="Текст заметки..."></textarea>
+
+            <div class="input-block">
+                <label>⏰ УСТАНОВИТЬ НАПОМИНАНИЕ:</label>
+                <input type="datetime-local" id="noteReminder">
+            </div>
+
+            <div class="modal-buttons">
+                <button class="btn btn-close" onclick="closeModal()">Закрыть</button>
+                <button class="btn btn-save" onclick="saveNote()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsOverlay" class="overlay" onclick="closeSettings()">
+        <div class="modal-content" id="settingsContent" onclick="event.stopPropagation()">
+            <h3 style="margin-top: 0;">Настройки ⚙️</h3>
+
+            <div class="input-block">
+                <label>ФОРМАТ АВТО-ЗАГОЛОВКА:</label>
+                <select id="titleTypeSelect" onchange="saveSettings()">
+                    <option value="auto">Первая строка текста</option>
+                    <option value="date">Дата создания заметки</option>
+                </select>
+            </div>
+
+            <div style="flex-grow: 1;"></div> <div class="modal-buttons">
+                <button class="btn btn-close" style="width: 100%;" onclick="closeSettings()">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        const userId = tg.initDataUnsafe?.user?.id || 0;
+
+        let currentNoteId = null;
+        let longPressTimer;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        let targetNoteId = urlParams.get('noteId');
+        const action = urlParams.get('action');
+
+        async function loadNotes() {
+            const res = await fetch(`/api/notes/${userId}`);
+            const notes = await res.json();
+            const container = document.getElementById('notesContainer');
+            container.innerHTML = '';
+
+            notes.forEach(note => {
+                const card = document.createElement('div');
+                card.className = 'note-card';
+
+                let reminderHtml = '';
+                if (note.reminderAt) {
+                    const date = new Date(note.reminderAt);
+                    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    reminderHtml = `<div class="reminder-badge">⏰ ${dateStr}, ${timeStr}</div>`;
+                }
+
+                card.innerHTML = `
+                    <div class="note-title">${note.title}</div>
+                    <div class="note-content">${note.content}</div>
+                    ${reminderHtml}
+                    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+                `;
+
+                card.onclick = () => openNote(note);
+
+                card.onmousedown = card.ontouchstart = () => {
+                    longPressTimer = setTimeout(() => {
+                        card.querySelector('.delete-btn').style.display = 'flex';
+                        tg.HapticFeedback.impactOccurred('medium');
+                    }, 700);
+                };
+                card.onmouseup = card.onmouseleave = card.ontouchend = () => clearTimeout(longPressTimer);
+
+                container.appendChild(card);
+            });
+
+            if (targetNoteId) {
+                const targetNote = notes.find(n => n.id == targetNoteId);
+                if (targetNote) {
+                    openNote(targetNote);
+                    if (action === 'reminder') {
+                        document.getElementById('noteReminder').focus();
+                    }
+                    targetNoteId = null;
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
+        }
+
+        function openNote(note) {
+            currentNoteId = note.id;
+            document.getElementById('noteTitle').value = note.title; // Подставляем заголовок
+            document.getElementById('noteEditor').value = note.content;
+
+            if (note.reminderAt) {
+                const localDate = new Date(note.reminderAt);
+                const offset = localDate.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(localDate.getTime() - offset)).toISOString().slice(0, 16);
+                document.getElementById('noteReminder').value = localISOTime;
+            } else {
+                document.getElementById('noteReminder').value = '';
+            }
+
+            const overlay = document.getElementById('modalOverlay');
+            const content = document.getElementById('modalContent');
+            overlay.style.display = 'flex';
+            setTimeout(() => { overlay.style.opacity = '1'; content.style.transform = 'translateY(0)'; }, 10);
+        }
+
+        function closeModal() {
+            const overlay = document.getElementById('modalOverlay');
+            const content = document.getElementById('modalContent');
+            overlay.style.opacity = '0'; content.style.transform = 'translateY(100%)';
+            setTimeout(() => { overlay.style.display = 'none'; loadNotes(); }, 250);
+        }
+
+        async function saveNote() {
+            const newTitle = document.getElementById('noteTitle').value; // Забираем измененный заголовок
+            const newContent = document.getElementById('noteEditor').value;
+            const reminderVal = document.getElementById('noteReminder').value;
+            const reminderAt = reminderVal ? new Date(reminderVal).toISOString() : null;
+
+            await fetch(`/api/notes/${currentNoteId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle, content: newContent, reminderAt: reminderAt })
+            });
+            closeModal();
+        }
+
+        // ЛОГИКА ОКНА НАСТРОЕК
+        async function loadSettings() {
+            const res = await fetch(`/api/settings/${userId}`);
+            const data = await res.json();
+            document.getElementById('titleTypeSelect').value = data.titleType;
+        }
+
+        async function saveSettings() {
+            const type = document.getElementById('titleTypeSelect').value;
+            await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: userId, titleType: type })
+            });
+        }
+
+        function openSettings() {
+            const overlay = document.getElementById('settingsOverlay');
+            const content = document.getElementById('settingsContent');
+            overlay.style.display = 'flex';
+            setTimeout(() => { overlay.style.opacity = '1'; content.style.transform = 'translateY(0)'; }, 10);
+        }
+
+        function closeSettings() {
+            const overlay = document.getElementById('settingsOverlay');
+            const content = document.getElementById('settingsContent');
+            overlay.style.opacity = '0'; content.style.transform = 'translateY(100%)';
+            setTimeout(() => { overlay.style.display = 'none'; }, 250);
+        }
+
+        async function deleteNote(event, id) {
+            event.stopPropagation();
+            if (confirm("Удалить эту заметку?")) {
+                await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+                loadNotes();
+            } else {
+                event.target.style.display = 'none';
+            }
+        }
+
+        document.addEventListener('click', (event) => {
+            const deleteButtons = document.querySelectorAll('.delete-btn');
+            deleteButtons.forEach(btn => {
+                if (btn.style.display === 'flex' && !btn.contains(event.target)) {
+                    btn.style.display = 'none';
+                }
+            });
+        });
+
+        loadNotes();
+        loadSettings(); // Загружаем настройки при старте
+    </script>
+</body>
+</html>

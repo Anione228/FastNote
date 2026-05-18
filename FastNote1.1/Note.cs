@@ -1,0 +1,26 @@
+﻿using System;
+using System.ComponentModel.DataAnnotations;
+
+public class Note
+{
+    public int Id { get; set; }
+    public long UserId { get; set; }
+    public string Title { get; set; }
+    public string Content { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    // НОВОЕ ПОЛЕ: Время напоминания (знак ? означает, что поле может быть null)
+    public DateTime? ReminderAt { get; set; }
+}
+
+public class UserSetting
+{
+    [Key]
+    public long UserId { get; set; }
+    public string TitleType { get; set; } = "auto"; // "auto" (первая строка) или "date" (дата)
+}
+public class BotSettings
+{
+    public string Token { get; set; } = string.Empty;
+    public string WebAppUrl { get; set; } = string.Empty;
+}
