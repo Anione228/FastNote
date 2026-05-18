@@ -1,5 +1,7 @@
+using FastNote1._1;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
 var botSettings = builder.Configuration.GetSection("BotSettings").Get<BotSettings>();
@@ -94,5 +96,20 @@ app.MapDelete("/api/notes/{id}", async (int id) =>
     await db.SaveChangesAsync();
     return Results.Ok();
 });
+// Эндпоинт для получения прямой ссылки на медиафайл из Телеграма
+app.MapGet("/api/notes/media/{fileId}", async (string fileId, BotSettings settings) =>
+{
+    try
+    {
+        var botClient = new Telegram.Bot.TelegramBotClient(settings.Token);
+        var fileInfo = await botClient.GetFile(fileId);
+        string directUrl = $"https://api.telegram.org/file/bot{settings.Token}/{fileInfo.FilePath}";
 
+        return Results.Redirect(directUrl);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
 app.Run();

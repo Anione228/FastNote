@@ -46,21 +46,25 @@
         .notes-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
+            gap: 14px;
             animation: fadeIn 0.3s ease-out;
         }
 
         .note-card {
             background: var(--sec-bg);
             border-radius: 16px;
-            padding: 14px;
+            padding: 16px;
             position: relative;
             border: 1px solid rgba(0,0,0,0.05);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.04);
             transition: transform 0.15s ease;
-            height: 120px;
+            min-height: 150px;
+            height: auto;
+            max-height: 220px;
             overflow: hidden;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
             -webkit-user-select: none;
             user-select: none;
         }
@@ -71,20 +75,29 @@
 
         .note-title {
             font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 4px;
+            font-size: 15px;
+            margin-bottom: 6px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            flex-shrink: 0;
         }
 
         .note-content {
-            font-size: 12px;
+            font-size: 13px;
             opacity: 0.8;
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            flex-grow: 1;
+        }
+
+        .note-card .video-note-player {
+            width: 90px !important;
+            height: 90px !important;
+            margin: 8px auto 0 auto !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
 
         .reminder-badge {
@@ -101,6 +114,7 @@
             align-items: center;
             gap: 3px;
             box-shadow: 0 2px 6px rgba(51, 144, 236, 0.3);
+            z-index: 5;
         }
 
         /* Общие стили для оверлеев модалок */
@@ -121,18 +135,28 @@
             transition: opacity 0.25s ease;
         }
 
-        .modal-content {
-            background: var(--sec-bg);
-            width: 100%;
-            height: 85%;
-            border-radius: 24px 24px 0 0;
-            padding: 24px;
-            box-shadow: 0 -10px 30px rgba(0,0,0,0.15);
+        /* Контентное окно модалки */
+        .modal-content, #modalContent {
             display: flex;
             flex-direction: column;
+            height: 85vh !important;
+            max-height: 85vh !important;
+            padding: 16px;
             box-sizing: border-box;
-            transform: translateY(100%);
-            transition: transform 0.25s cubic-bezier(0.1, 0.7, 0.1, 1);
+            background: var(--sec-bg);
+            border-radius: 20px 20px 0 0;
+            width: 100%;
+        }
+
+        /* Зона скролла теперь вмещает И напоминалку, чтобы ничего не выдавливало наружу */
+        .modal-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 8px;
+            padding-right: 4px;
         }
 
         /* Поле изменения заголовка в заметке */
@@ -147,10 +171,14 @@
             padding-bottom: 8px;
             border-bottom: 1px solid rgba(0,0,0,0.05);
             outline: none;
+            flex-shrink: 0;
         }
 
-        textarea {
+        /* Редактор текста */
+        #noteEditor {
             width: 100%;
+            height: auto;
+            min-height: 120px;
             border: none;
             background: transparent;
             color: var(--text);
@@ -159,15 +187,48 @@
             line-height: 1.5;
             resize: none;
             outline: none;
-            flex-grow: 1;
+            flex-shrink: 0;
             -webkit-user-select: text;
             user-select: text;
         }
 
+        /* Безопасный контейнер для картинок и плееров */
+        #modalMediaContainer {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+
+        /* Увеличенный плеер для видео-заметок */
+        .video-note-player {
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #000;
+            margin: 10px auto;
+            display: block;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+        }
+
+        /* Адаптивное превью фото в модалке */
+        .modal-photo-preview {
+            width: 100%;
+            max-height: 380px;
+            border-radius: 12px;
+            object-fit: contain;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        /* Блок напоминания */
         .input-block {
+            flex-shrink: 0;
             margin-top: 10px;
             padding: 12px;
-            background: rgba(0,0,0,0.02);
+            background: rgba(0,0,0,0.03);
             border-radius: 14px;
             display: flex;
             flex-direction: column;
@@ -182,7 +243,7 @@
 
             .input-block select, .input-block input {
                 border: 1px solid rgba(0,0,0,0.1);
-                background: var(--sec-bg);
+                background: var(--bg);
                 color: var(--text);
                 padding: 10px;
                 border-radius: 10px;
@@ -191,11 +252,14 @@
                 outline: none;
             }
 
+        /* Кнопки жестко зафиксированы в самом низу и никуда не уедут */
         .modal-buttons {
+            flex-shrink: 0;
             display: flex;
             justify-content: space-between;
-            margin-top: 15px;
+            margin-top: 12px;
             padding-bottom: env(safe-area-inset-bottom);
+            gap: 12px;
         }
 
         .btn {
@@ -205,6 +269,8 @@
             font-weight: bold;
             font-size: 15px;
             cursor: pointer;
+            flex: 1;
+            text-align: center;
         }
 
         .btn-save {
@@ -255,6 +321,36 @@
                 opacity: 1;
             }
         }
+
+        .media-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            padding: 4px 6px;
+            border-radius: 50%;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        .note-card.photo-only {
+            padding: 0 !important;
+            height: 160px !important;
+        }
+
+            .note-card.photo-only img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+
+        .voice-player {
+            width: 100%;
+            margin-top: 10px;
+            height: 32px;
+        }
     </style>
 </head>
 <body>
@@ -270,11 +366,14 @@
         <div class="modal-content" id="modalContent" onclick="event.stopPropagation()">
             <input type="text" id="noteTitle" class="title-input" placeholder="Заголовок">
 
-            <textarea id="noteEditor" placeholder="Текст заметки..."></textarea>
+            <div class="modal-scroll-area">
+                <textarea id="noteEditor" placeholder="Текст заметки..."></textarea>
+                <div id="modalMediaContainer"></div>
 
-            <div class="input-block">
-                <label>⏰ УСТАНОВИТЬ НАПОМИНАНИЕ:</label>
-                <input type="datetime-local" id="noteReminder">
+                <div class="input-block">
+                    <label>⏰ УСТАНОВИТЬ НАПОМИНАНИЕ:</label>
+                    <input type="datetime-local" id="noteReminder">
+                </div>
             </div>
 
             <div class="modal-buttons">
@@ -296,7 +395,8 @@
                 </select>
             </div>
 
-            <div style="flex-grow: 1;"></div> <div class="modal-buttons">
+            <div style="flex-grow: 1;"></div>
+            <div class="modal-buttons">
                 <button class="btn btn-close" style="width: 100%;" onclick="closeSettings()">Закрыть</button>
             </div>
         </div>
@@ -322,7 +422,18 @@
 
             notes.forEach(note => {
                 const card = document.createElement('div');
-                card.className = 'note-card';
+
+                const isPhotoOnly = note.mediaType === 'photo' && (!note.content || note.content.trim() === '');
+                card.className = isPhotoOnly ? 'note-card photo-only' : 'note-card';
+
+                let mediaBadgeHtml = '';
+                if (note.mediaType && note.mediaType !== 'text') {
+                    let icon = '📝';
+                    if (note.mediaType === 'photo') icon = '🖼️';
+                    if (note.mediaType === 'voice') icon = '🎙️';
+                    if (note.mediaType === 'video_note') icon = '🔵';
+                    mediaBadgeHtml = `<div class="media-badge" title="Вложение: ${note.mediaType}">${icon}</div>`;
+                }
 
                 let reminderHtml = '';
                 if (note.reminderAt) {
@@ -332,12 +443,42 @@
                     reminderHtml = `<div class="reminder-badge">⏰ ${dateStr}, ${timeStr}</div>`;
                 }
 
+                let cardContentHtml = '';
+                if (isPhotoOnly) {
+                    cardContentHtml = `<img src="/api/notes/media/${note.telegramFileId}" alt="Фотозаметка">`;
+                } else {
+                    cardContentHtml = `
+                            <div class="note-title">${note.title}</div>
+                            <div class="note-content">${note.content}</div>
+                        `;
+
+                    if (note.mediaType === 'photo' && note.telegramFileId) {
+                        cardContentHtml += `<img src="/api/notes/media/${note.telegramFileId}" style="width:100%; border-radius:8px; margin-top:8px; max-height:150px; object-fit:cover;" alt="Фото">`;
+                    }
+
+                    if (note.mediaType === 'voice' && note.telegramFileId) {
+                        cardContentHtml += `
+                                <audio controls class="voice-player" onclick="event.stopPropagation();">
+                                    <source src="/api/notes/media/${note.telegramFileId}" type="audio/ogg">
+                                </audio>
+                            `;
+                    }
+
+                    if (note.mediaType === 'video_note' && note.telegramFileId) {
+                        cardContentHtml += `
+                                <video class="video-note-player" style="width:100px; height:100px; margin:5px auto;" controls playsinline onclick="event.stopPropagation();">
+                                    <source src="/api/notes/media/${note.telegramFileId}" type="video/mp4">
+                                </video>
+                            `;
+                    }
+                }
+
                 card.innerHTML = `
-                    <div class="note-title">${note.title}</div>
-                    <div class="note-content">${note.content}</div>
-                    ${reminderHtml}
-                    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
-                `;
+                        ${mediaBadgeHtml}
+                        ${cardContentHtml}
+                        ${reminderHtml}
+                        <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+                    `;
 
                 card.onclick = () => openNote(note);
 
@@ -367,8 +508,39 @@
 
         function openNote(note) {
             currentNoteId = note.id;
-            document.getElementById('noteTitle').value = note.title; // Подставляем заголовок
-            document.getElementById('noteEditor').value = note.content;
+            document.getElementById('noteTitle').value = note.title;
+
+            const editor = document.getElementById('noteEditor');
+            editor.value = note.content;
+
+            const mediaContainer = document.getElementById('modalMediaContainer');
+            mediaContainer.innerHTML = '';
+
+            if (note.mediaType && note.mediaType !== 'text') {
+                if (note.mediaType === 'photo') {
+                    mediaContainer.innerHTML = `<img src="/api/notes/media/${note.telegramFileId}" class="modal-photo-preview">`;
+                } else if (note.mediaType === 'voice') {
+                    mediaContainer.innerHTML = `
+                            <audio controls style="width:100%; margin: 5px 0;">
+                                <source src="/api/notes/media/${note.telegramFileId}" type="audio/ogg">
+                            </audio>
+                        `;
+                } else if (note.mediaType === 'video_note') {
+                    mediaContainer.innerHTML = `
+                            <video class="video-note-player" controls playsinline>
+                                <source src="/api/notes/media/${note.telegramFileId}" type="video/mp4">
+                            </video>
+                        `;
+                }
+            }
+
+            editor.style.height = 'auto';
+            editor.style.height = (editor.scrollHeight) + 'px';
+
+            editor.oninput = function () {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            };
 
             if (note.reminderAt) {
                 const localDate = new Date(note.reminderAt);
@@ -393,7 +565,7 @@
         }
 
         async function saveNote() {
-            const newTitle = document.getElementById('noteTitle').value; // Забираем измененный заголовок
+            const newTitle = document.getElementById('noteTitle').value;
             const newContent = document.getElementById('noteEditor').value;
             const reminderVal = document.getElementById('noteReminder').value;
             const reminderAt = reminderVal ? new Date(reminderVal).toISOString() : null;
@@ -406,7 +578,6 @@
             closeModal();
         }
 
-        // ЛОГИКА ОКНА НАСТРОЕК
         async function loadSettings() {
             const res = await fetch(`/api/settings/${userId}`);
             const data = await res.json();
@@ -456,7 +627,7 @@
         });
 
         loadNotes();
-        loadSettings(); // Загружаем настройки при старте
+        loadSettings();
     </script>
 </body>
 </html>

@@ -11,6 +11,14 @@ public class Note
 
     // НОВОЕ ПОЛЕ: Время напоминания (знак ? означает, что поле может быть null)
     public DateTime? ReminderAt { get; set; }
+
+    public string MediaType { get; set; } = "text";
+
+    // Уникальный ID файла на серверах Telegram
+    public string? TelegramFileId { get; set; }
+
+    // Длительность аудио/видео в секундах (для ГС и кружков)
+    public int? Duration { get; set; }
 }
 
 public class UserSetting
