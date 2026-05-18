@@ -176,46 +176,64 @@ namespace FastNote1._1
                 }
 
                 // ==========================================
-                // 2. ФИЧА «.»: Перемещение заметки в самый верх
+                // 2. ФИЧА «.»: Перемещение заметки в самый верх (ТЕПЕРЬ ДЛЯ ВСЕХ ТИПОВ МЕДИА)
                 // ==========================================
-                if (userText == "." && message.ReplyToMessage is { Text: { } repliedText })
+                if (userText == "." && message.ReplyToMessage is { } repliedMsg)
                 {
                     using (var db = new AppDbContext())
                     {
-                        var existingNotes = await db.Notes
-                            .Where(n => n.UserId == userId && n.Content.StartsWith(repliedText))
-                            .OrderBy(n => n.CreatedAt)
-                            .ToListAsync(cancellationToken);
+                        IQueryable<Note> query = db.Notes.Where(n => n.UserId == userId);
+
+                        // Определяем, какое именно сообщение переслали
+                        if (repliedMsg.Photo is { } p)
+                        {
+                            var fId = p.Last().FileId;
+                            query = query.Where(n => n.TelegramFileId == fId);
+                        }
+                        else if (repliedMsg.Voice is { } v)
+                        {
+                            query = query.Where(n => n.TelegramFileId == v.FileId);
+                        }
+                        else if (repliedMsg.VideoNote is { } vn)
+                        {
+                            query = query.Where(n => n.TelegramFileId == vn.FileId);
+                        }
+                        else if (repliedMsg.Document is { } d && d.MimeType != null && d.MimeType.StartsWith("image/"))
+                        {
+                            query = query.Where(n => n.TelegramFileId == d.FileId);
+                        }
+                        else if (!string.IsNullOrEmpty(repliedMsg.Text))
+                        {
+                            query = query.Where(n => n.Content.StartsWith(repliedMsg.Text));
+                        }
+                        else
+                        {
+                            await botClient.SendMessage(chatId: userId, text: "Этот тип сообщения не поддерживается для поднятия.", cancellationToken: cancellationToken);
+                            return;
+                        }
+
+                        var existingNotes = await query.OrderBy(n => n.CreatedAt).ToListAsync(cancellationToken);
 
                         if (existingNotes.Any())
                         {
                             var originalNote = existingNotes.First();
-                            originalNote.CreatedAt = DateTime.Now;
+                            originalNote.CreatedAt = DateTime.Now; // Поднимаем наверх
 
+                            // Удаляем дубликаты, если они случайно создались
                             if (existingNotes.Count > 1)
                             {
-                                var duplicateNote = existingNotes.Last();
-                                if (duplicateNote.Id != originalNote.Id)
+                                foreach (var dup in existingNotes.Skip(1))
                                 {
-                                    db.Notes.Remove(duplicateNote);
+                                    db.Notes.Remove(dup);
                                 }
                             }
 
                             await db.SaveChangesAsync(cancellationToken);
-
-                            await botClient.SendMessage(
-                                chatId: userId,
-                                text: "Заметка успешно перемещена в самый верх! 🔝",
-                                cancellationToken: cancellationToken
-                            );
+                            await botClient.SendMessage(chatId: userId, text: "Заметка успешно перемещена в самый верх! 🔝", cancellationToken: cancellationToken);
                         }
                         else
                         {
-                            await botClient.SendMessage(
-                                chatId: userId,
-                                text: "Не найдено сохраненной заметки с таким текстом.",
-                                cancellationToken: cancellationToken
-                            );
+                            await botClient.SendMessage(chatId: userId, text: "Не найдено сохраненной заметки для этого сообщения.", cancellationToken: cancellationToken);
                         }
                     }
                     return;
@@ -253,7 +271,31 @@ namespace FastNote1._1
                     newNote.MediaType = "voice";
                     newNote.TelegramFileId = voice.FileId;
                     newNote.Duration = voice.Duration;
-                    newNote.Content = message.Caption ?? "🎙 Голосовое сообщение";
+
+                    // Проверяем настройку пользователя в базе
+                    bool isTranscriptionEnabled = true;
+                    using (var dbMedia = new AppDbContext())
+                    {
+                        var settings = await dbMedia.UserSettings.FindAsync(userId);
+                        if (settings != null)
+                        {
+                            isTranscriptionEnabled = settings.IsTranscriptionEnabled;
+                        }
+                    }
+
+                    string transcribedText;
+                    if (isTranscriptionEnabled)
+                    {
+                        transcribedText = await TranscribeVoiceAsync(botClient, voice.FileId, cancellationToken);
+                    }
+                    else
+                    {
+                        transcribedText = "🎙 Голосовое сообщение (Расшифровка отключена в настройках)";
+                    }
+
+                    newNote.Content = !string.IsNullOrEmpty(message.Caption)
+                        ? $"{message.Caption}\n\n{transcribedText}"
+                        : transcribedText;
                 }
                 else if (message.VideoNote is { } videoNote)
                 {
@@ -344,6 +386,70 @@ namespace FastNote1._1
             // Здесь можно логировать системные ошибки Telegram API, если нужно
             Console.WriteLine($"Ошибка Telegram API: {exception.Message}");
             return Task.CompletedTask;
+        }
+        // МЕТОД ДЛЯ БЕСПЛАТНОЙ РАСШИФРОВКИ ГОЛОСОВЫХ ЧЕРЕЗ WHISPER
+        private async Task<string> TranscribeVoiceAsync(ITelegramBotClient botClient, string fileId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(_settings.GroqApiKey))
+                {
+                    return "🎙 Голосовое сообщение (Разработчик не настроил GroqApiKey)";
+                }
+
+                // 1. Получаем путь к файлу на серверах Telegram
+                var fileInfo = await botClient.GetFile(fileId, cancellationToken);
+                if (string.IsNullOrEmpty(fileInfo.FilePath))
+                {
+                    return "🎙 Голосовое сообщение (Не удалось скачать аудиофайл)";
+                }
+
+                // 2. Скачиваем аудио в поток памяти (MemoryStream)
+                using var audioStream = new MemoryStream();
+                await botClient.DownloadFile(fileInfo.FilePath, audioStream, cancellationToken);
+                audioStream.Position = 0;
+
+                // 3. Готовим HTTP-запрос к API Groq
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _settings.GroqApiKey);
+
+                using var form = new MultipartFormDataContent();
+                var streamContent = new StreamContent(audioStream);
+
+                // Указываем тип аудио, который присылает Telegram (Ogg Opus)
+                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/ogg");
+
+                form.Add(streamContent, "file", "voice.ogg");
+                form.Add(new StringContent("whisper-large-v3"), "model"); // Используем лучшую модель
+                form.Add(new StringContent("ru"), "language");            // Принудительно ставим русский язык
+
+                // 4. Отправляем запрос
+                var response = await httpClient.PostAsync("https://api.groq.com/openai/v1/audio/transcriptions", form, cancellationToken);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync();
+
+                    // Быстро парсим JSON стандартным System.Text.Json
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("text", out var textProp))
+                    {
+                        string resultText = textProp.GetString() ?? "";
+                        return !string.IsNullOrWhiteSpace(resultText) ? "🗣 " + resultText : "🎙 (Пустое голосовое сообщение)";
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Ошибка Groq API: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка при транскрибации голосового: {ex.Message}");
+            }
+
+            return "🎙 Голосовое сообщение (Не удалось расшифровать)";
         }
     }
 }

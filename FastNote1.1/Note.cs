@@ -26,9 +26,11 @@ public class UserSetting
     [Key]
     public long UserId { get; set; }
     public string TitleType { get; set; } = "auto"; // "auto" (первая строка) или "date" (дата)
+    public bool IsTranscriptionEnabled { get; set; } = true; // По умолчанию включено
 }
 public class BotSettings
 {
     public string Token { get; set; } = string.Empty;
     public string WebAppUrl { get; set; } = string.Empty;
+    public string GroqApiKey { get; set; } = string.Empty;
 }

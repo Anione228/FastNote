@@ -60,7 +60,7 @@
             transition: transform 0.15s ease;
             min-height: 150px;
             height: auto;
-            max-height: 220px;
+            max-height: 240px;
             overflow: hidden;
             box-sizing: border-box;
             display: flex;
@@ -91,13 +91,6 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             flex-grow: 1;
-        }
-
-        .note-card .video-note-player {
-            width: 90px !important;
-            height: 90px !important;
-            margin: 8px auto 0 auto !important;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
 
         .reminder-badge {
@@ -148,7 +141,7 @@
             width: 100%;
         }
 
-        /* Зона скролла теперь вмещает И напоминалку, чтобы ничего не выдавливало наружу */
+        /* Зона скролла */
         .modal-scroll-area {
             flex: 1;
             overflow-y: auto;
@@ -202,18 +195,6 @@
             margin-top: 6px;
         }
 
-        /* Увеличенный плеер для видео-заметок */
-        .video-note-player {
-            width: 240px;
-            height: 240px;
-            border-radius: 50%;
-            object-fit: cover;
-            background: #000;
-            margin: 10px auto;
-            display: block;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-        }
-
         /* Адаптивное превью фото в модалке */
         .modal-photo-preview {
             width: 100%;
@@ -223,7 +204,7 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
-        /* Блок напоминания */
+        /* Блок настроек и напоминаний */
         .input-block {
             flex-shrink: 0;
             margin-top: 10px;
@@ -252,7 +233,7 @@
                 outline: none;
             }
 
-        /* Кнопки жестко зафиксированы в самом низу и никуда не уедут */
+        /* Кнопки жестко зафиксированы в самом низу */
         .modal-buttons {
             flex-shrink: 0;
             display: flex;
@@ -346,11 +327,179 @@
                 display: block;
             }
 
-        .voice-player {
-            width: 100%;
-            margin-top: 10px;
-            height: 32px;
+        /* Отключаем системное меню при долгом нажатии на картинки */
+        img {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            pointer-events: none;
         }
+
+        .note-card {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ======================================================== */
+        /* КАСТОМНЫЕ ПЛЕЕРЫ В СТИЛЕ TELEGRAM                       */
+        /* ======================================================== */
+
+        /* Плеер голосовых сообщений (ГС) */
+        .tg-voice-player {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid rgba(0,0,0,0.06);
+            padding: 6px 10px;
+            border-radius: 12px;
+            margin-top: 8px;
+            gap: 10px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .tg-play-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background-color: var(--accent);
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+            .tg-play-btn svg {
+                width: 16px;
+                height: 16px;
+                fill: #ffffff;
+            }
+
+        .tg-player-info {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            gap: 2px;
+            overflow: hidden;
+        }
+
+        .tg-waveform {
+            height: 12px;
+            width: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M2,10 L2,10 M6,5 L6,15 M10,8 L10,12 M14,3 L14,17 M18,7 L18,13 M22,9 L22,11 M26,4 L26,16 M30,6 L30,14 M34,2 L34,18 M38,7 L38,13 M42,5 L42,15 M46,9 L46,11 M50,4 L50,16 M54,8 L54,12 M58,6 L58,14 M62,2 L62,18 M66,7 L66,13 M70,5 L70,15 M74,9 L74,11 M78,3 L78,17 M82,6 L82,14 M86,8 L86,12 M90,4 L90,16 M94,7 L94,13 M98,10 L98,10' stroke='%233390ec' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-size: 100% 100%;
+            opacity: 0.4;
+            transition: opacity 0.2s;
+        }
+
+        .tg-voice-player.playing .tg-waveform {
+            opacity: 1;
+        }
+
+        .tg-duration {
+            font-size: 11px;
+            color: var(--hint);
+        }
+
+        /* Видео-кружки */
+        .tg-video-note-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 8px;
+            gap: 4px;
+            width: 100%;
+        }
+
+        .tg-video-wrapper {
+            position: relative;
+            border-radius: 50%;
+            overflow: hidden;
+            cursor: pointer;
+            background: #000000;
+        }
+
+        /* Размеры круглого плеера в сетке карточек */
+        .note-card .tg-video-wrapper {
+            width: 90px;
+            height: 90px;
+            margin: 0 auto;
+        }
+
+        /* Размеры круглого плеера в открытом модальном окне */
+        #modalMediaContainer .tg-video-wrapper {
+            width: 200px;
+            height: 200px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+
+        .tg-video-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+
+        .tg-video-play-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 32px;
+            height: 32px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        #modalMediaContainer .tg-video-play-btn {
+            width: 48px;
+            height: 48px;
+        }
+
+        .tg-video-play-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: #ffffff;
+            margin-left: 1px;
+        }
+
+        #modalMediaContainer .tg-video-play-btn svg {
+            width: 22px;
+            height: 22px;
+            margin-left: 2px;
+        }
+
+        .tg-video-wrapper.playing .tg-video-play-btn {
+            opacity: 0;
+        }
+
+        .tg-video-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+            pointer-events: none;
+        }
+
+            .tg-video-progress circle {
+                fill: none;
+                stroke: var(--accent);
+                stroke-width: 3;
+                stroke-linecap: round;
+                transition: stroke-dashoffset 0.1s linear;
+            }
     </style>
 </head>
 <body>
@@ -392,6 +541,14 @@
                 <select id="titleTypeSelect" onchange="saveSettings()">
                     <option value="auto">Первая строка текста</option>
                     <option value="date">Дата создания заметки</option>
+                </select>
+            </div>
+
+            <div class="input-block">
+                <label>РАСШИФРОВКА ГОЛОСОВЫХ:</label>
+                <select id="transcriptionSelect" onchange="saveSettings()">
+                    <option value="true">Включена (Whisper AI)</option>
+                    <option value="false">Выключена</option>
                 </select>
             </div>
 
@@ -448,37 +605,55 @@
                     cardContentHtml = `<img src="/api/notes/media/${note.telegramFileId}" alt="Фотозаметка">`;
                 } else {
                     cardContentHtml = `
-                            <div class="note-title">${note.title}</div>
-                            <div class="note-content">${note.content}</div>
-                        `;
+                                <div class="note-title">${note.title}</div>
+                                <div class="note-content">${note.content}</div>
+                            `;
 
                     if (note.mediaType === 'photo' && note.telegramFileId) {
                         cardContentHtml += `<img src="/api/notes/media/${note.telegramFileId}" style="width:100%; border-radius:8px; margin-top:8px; max-height:150px; object-fit:cover;" alt="Фото">`;
                     }
 
                     if (note.mediaType === 'voice' && note.telegramFileId) {
+                        const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                <audio controls class="voice-player" onclick="event.stopPropagation();">
-                                    <source src="/api/notes/media/${note.telegramFileId}" type="audio/ogg">
-                                </audio>
+                                <div class="tg-voice-player" onclick="event.stopPropagation(); toggleVoicePlay('card', ${note.id})">
+                                    <audio id="audio-card-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                    <button class="tg-play-btn" id="btn-card-${note.id}">
+                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    </button>
+                                    <div class="tg-player-info">
+                                        <div class="tg-waveform"></div>
+                                        <span class="tg-duration" id="time-card-${note.id}">${initialTime}</span>
+                                    </div>
+                                </div>
                             `;
                     }
 
                     if (note.mediaType === 'video_note' && note.telegramFileId) {
+                        const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                <video class="video-note-player" style="width:100px; height:100px; margin:5px auto;" controls playsinline onclick="event.stopPropagation();">
-                                    <source src="/api/notes/media/${note.telegramFileId}" type="video/mp4">
-                                </video>
+                                <div class="tg-video-note-container" onclick="event.stopPropagation();">
+                                    <div class="tg-video-wrapper" onclick="toggleVideoPlay('card', ${note.id})" id="wrapper-card-${note.id}">
+                                        <video id="video-card-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                        <div class="tg-video-play-btn" id="vbtn-card-${note.id}">
+                                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                        </div>
+                                        <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                            <circle cx="50" cy="50" r="46" id="progress-card-${note.id}" />
+                                        </svg>
+                                    </div>
+                                    <span class="tg-duration" id="vtime-card-${note.id}">${initialTime}</span>
+                                </div>
                             `;
                     }
                 }
 
                 card.innerHTML = `
-                        ${mediaBadgeHtml}
-                        ${cardContentHtml}
-                        ${reminderHtml}
-                        <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
-                    `;
+                            ${mediaBadgeHtml}
+                            ${cardContentHtml}
+                            ${reminderHtml}
+                            <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+                        `;
 
                 card.onclick = () => openNote(note);
 
@@ -520,16 +695,34 @@
                 if (note.mediaType === 'photo') {
                     mediaContainer.innerHTML = `<img src="/api/notes/media/${note.telegramFileId}" class="modal-photo-preview">`;
                 } else if (note.mediaType === 'voice') {
+                    const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                            <audio controls style="width:100%; margin: 5px 0;">
-                                <source src="/api/notes/media/${note.telegramFileId}" type="audio/ogg">
-                            </audio>
+                            <div class="tg-voice-player" onclick="toggleVoicePlay('modal', ${note.id})">
+                                <audio id="audio-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                <button class="tg-play-btn" id="btn-modal-${note.id}">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                                <div class="tg-player-info">
+                                    <div class="tg-waveform"></div>
+                                    <span class="tg-duration" id="time-modal-${note.id}">${initialTime}</span>
+                                </div>
+                            </div>
                         `;
                 } else if (note.mediaType === 'video_note') {
+                    const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                            <video class="video-note-player" controls playsinline>
-                                <source src="/api/notes/media/${note.telegramFileId}" type="video/mp4">
-                            </video>
+                            <div class="tg-video-note-container">
+                                <div class="tg-video-wrapper" onclick="toggleVideoPlay('modal', ${note.id})" id="wrapper-modal-${note.id}">
+                                    <video id="video-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                    <div class="tg-video-play-btn" id="vbtn-modal-${note.id}">
+                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    </div>
+                                    <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                        <circle cx="50" cy="50" r="46" id="progress-modal-${note.id}" />
+                                    </svg>
+                                </div>
+                                <span class="tg-duration" id="vtime-modal-${note.id}">${initialTime}</span>
+                            </div>
                         `;
                 }
             }
@@ -580,16 +773,25 @@
 
         async function loadSettings() {
             const res = await fetch(`/api/settings/${userId}`);
-            const data = await res.json();
-            document.getElementById('titleTypeSelect').value = data.titleType;
+            const settings = await res.json();
+            document.getElementById('titleTypeSelect').value = settings.titleType;
+            document.getElementById('transcriptionSelect').value = String(settings.isTranscriptionEnabled);
         }
 
         async function saveSettings() {
-            const type = document.getElementById('titleTypeSelect').value;
+            const titleType = document.getElementById('titleTypeSelect').value;
+            const transcriptionValue = document.getElementById('transcriptionSelect').value;
+
+            const data = {
+                userId: userId,
+                titleType: titleType,
+                isTranscriptionEnabled: transcriptionValue === "true"
+            };
+
             await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: userId, titleType: type })
+                body: JSON.stringify(data)
             });
         }
 
@@ -615,6 +817,122 @@
             } else {
                 event.target.style.display = 'none';
             }
+        }
+
+        /* ======================================================== */
+        /* ЛОГИКА УПРАВЛЕНИЯ МЕДИАПЛЕЕРАМИ                           */
+        /* ======================================================== */
+
+        function toggleVoicePlay(prefix, id) {
+            const audio = document.getElementById(`audio-${prefix}-${id}`);
+            const button = document.getElementById(`btn-${prefix}-${id}`);
+            const playerContainer = audio.closest('.tg-voice-player');
+
+            // Выключаем все остальные медиаплееры на странице
+            document.querySelectorAll('audio, video').forEach(media => {
+                if (media !== audio) {
+                    media.pause();
+                    const parts = media.id.split('-');
+                    if (media.tagName === 'AUDIO') {
+                        resetVoiceUI(parts[1], parts[2]);
+                    } else {
+                        resetVideoUI(parts[1], parts[2]);
+                    }
+                }
+            });
+
+            if (audio.paused) {
+                audio.play();
+                playerContainer.classList.add('playing');
+                button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+
+                audio.ontimeupdate = () => {
+                    document.getElementById(`time-${prefix}-${id}`).innerText = formatTime(audio.currentTime);
+                };
+                audio.onended = () => {
+                    resetVoiceUI(prefix, id);
+                };
+            } else {
+                audio.pause();
+                playerContainer.classList.remove('playing');
+                button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+            }
+        }
+
+        function resetVoiceUI(prefix, id) {
+            const audio = document.getElementById(`audio-${prefix}-${id}`);
+            const button = document.getElementById(`btn-${prefix}-${id}`);
+            const playerContainer = audio?.closest('.tg-voice-player');
+            if (playerContainer) playerContainer.classList.remove('playing');
+            if (button) button.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
+            const durationEl = document.getElementById(`time-${prefix}-${id}`);
+            if (durationEl && audio) {
+                durationEl.innerText = formatTime(audio.duration || 0);
+            }
+        }
+
+        function toggleVideoPlay(prefix, id) {
+            const video = document.getElementById(`video-${prefix}-${id}`);
+            const wrapper = document.getElementById(`wrapper-${prefix}-${id}`);
+            const circle = document.getElementById(`progress-${prefix}-${id}`);
+
+            const radius = circle.r.baseVal.value;
+            const circumference = 2 * Math.PI * radius;
+            circle.style.strokeDasharray = circumference;
+
+            document.querySelectorAll('audio, video').forEach(media => {
+                if (media !== video) {
+                    media.pause();
+                    const parts = media.id.split('-');
+                    if (media.tagName === 'AUDIO') {
+                        resetVoiceUI(parts[1], parts[2]);
+                    } else {
+                        resetVideoUI(parts[1], parts[2]);
+                    }
+                }
+            });
+
+            if (video.paused) {
+                video.play();
+                wrapper.classList.add('playing');
+
+                video.ontimeupdate = () => {
+                    document.getElementById(`vtime-${prefix}-${id}`).innerText = formatTime(video.currentTime);
+                    const progress = video.currentTime / video.duration;
+                    const offset = circumference - (progress * circumference);
+                    circle.style.strokeDashoffset = isNaN(offset) ? circumference : offset;
+                };
+
+                video.onended = () => {
+                    resetVideoUI(prefix, id);
+                };
+            } else {
+                video.pause();
+                wrapper.classList.remove('playing');
+            }
+        }
+
+        function resetVideoUI(prefix, id) {
+            const video = document.getElementById(`video-${prefix}-${id}`);
+            const wrapper = document.getElementById(`wrapper-${prefix}-${id}`);
+            const circle = document.getElementById(`progress-${prefix}-${id}`);
+            if (wrapper) wrapper.classList.remove('playing');
+            if (circle) {
+                const radius = circle.r.baseVal.value;
+                const circumference = 2 * Math.PI * radius;
+                circle.style.strokeDashoffset = circumference;
+            }
+            const timeEl = document.getElementById(`vtime-${prefix}-${id}`);
+            if (timeEl && video) {
+                timeEl.innerText = formatTime(video.duration || 0);
+            }
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds === Infinity) return "0:00";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
         }
 
         document.addEventListener('click', (event) => {
