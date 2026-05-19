@@ -65,7 +65,13 @@ app.MapGet("/api/settings/{userId}", async (long userId) =>
 {
     using var db = new AppDbContext();
     var setting = await db.UserSettings.FindAsync(userId);
-    return Results.Ok(new { titleType = setting?.TitleType ?? "auto" });
+
+    // Возвращаем объект, где IsTranscriptionEnabled - это булево значение (true/false)
+    return Results.Ok(new
+    {
+        titleType = setting?.TitleType ?? "auto",
+        isTranscriptionEnabled = setting?.IsTranscriptionEnabled ?? true
+    });
 });
 
 // СОХРАНЕНИЕ НАСТРОЕК
@@ -73,6 +79,7 @@ app.MapPost("/api/settings", async (UserSetting setting) =>
 {
     using var db = new AppDbContext();
     var existing = await db.UserSettings.FindAsync(setting.UserId);
+
     if (existing == null)
     {
         db.UserSettings.Add(setting);
@@ -80,6 +87,7 @@ app.MapPost("/api/settings", async (UserSetting setting) =>
     else
     {
         existing.TitleType = setting.TitleType;
+        existing.IsTranscriptionEnabled = setting.IsTranscriptionEnabled; // ВОТ ЭТО БЫЛО ПРОПУЩЕНО?
     }
     await db.SaveChangesAsync();
     return Results.Ok();
@@ -88,7 +96,7 @@ app.MapPost("/api/settings", async (UserSetting setting) =>
 app.MapPost("/api/notes", async (Note note) =>
 {
     using var db = new AppDbContext();
-    note.CreatedAt = DateTime.UtcNow; // Ставим время сервера
+    note.CreatedAt = DateTime.UtcNow.AddHours(3); ; // Ставим время сервера
     db.Notes.Add(note);
     await db.SaveChangesAsync();
     return Results.Ok(note);

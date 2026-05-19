@@ -304,6 +304,13 @@ namespace FastNote1._1
                     newNote.Duration = videoNote.Duration;
                     newNote.Content = "🔵 Видео-заметка (кружок)";
                 }
+                else if (message.Video is { } video)
+                {
+                    newNote.MediaType = "video";
+                    newNote.TelegramFileId = video.FileId;
+                    newNote.Duration = video.Duration;
+                    newNote.Content = message.Caption ?? "🎬 Видео";
+                }
                 else
                 {
                     return;
@@ -335,6 +342,7 @@ namespace FastNote1._1
                                 "photo" => "📷 Фотозаметка",
                                 "voice" => "🎙 Голосовая заметка",
                                 "video_note" => "🔵 Кружок",
+                                "video"=> "🎬 Видео",
                                 _ => "Заметка"
                             };
                         }
@@ -360,6 +368,7 @@ namespace FastNote1._1
                     "photo" => "Фотография успешно сохранена в заметки! 🖼",
                     "voice" => "Голосовое сообщение добавлено! 🎙",
                     "video_note" => "Кружок успешно сохранен! 🔵",
+                    "video" => "Видео успешно сохранено! 🎬",
                     _ => "Заметка сохранена! 📝"
                 };
 
