@@ -84,7 +84,15 @@ app.MapPost("/api/settings", async (UserSetting setting) =>
     await db.SaveChangesAsync();
     return Results.Ok();
 });
-
+// СОЗДАНИЕ НОВОЙ ЗАМЕТКИ
+app.MapPost("/api/notes", async (Note note) =>
+{
+    using var db = new AppDbContext();
+    note.CreatedAt = DateTime.UtcNow; // Ставим время сервера
+    db.Notes.Add(note);
+    await db.SaveChangesAsync();
+    return Results.Ok(note);
+});
 // Метод для удаления заметки
 app.MapDelete("/api/notes/{id}", async (int id) =>
 {
