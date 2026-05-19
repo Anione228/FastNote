@@ -129,11 +129,10 @@
         }
 
         /* Контентное окно модалки */
-        .modal-content, #modalContent {
+        .modal-content {
             display: flex;
             flex-direction: column;
             height: 85vh !important;
-            max-height: 85vh !important;
             padding: 16px;
             box-sizing: border-box;
             background: var(--sec-bg);
@@ -143,10 +142,10 @@
 
         /* Зона скролла */
         .modal-scroll-area {
-            flex: 1;
-            overflow-y: auto;
-            padding-right: 4px;
-            margin-bottom: 8px;
+            flex: 1; /* Занимает всё свободное место между заголовком и кнопками */
+            overflow-y: auto; /* Включает скролл именно здесь */
+            display: flex;
+            flex-direction: column;
         }
 
         /* Поле изменения заголовка в заметке */
@@ -168,8 +167,8 @@
         /* Редактор текста */
         #noteEditor {
             width: 100%;
-            height: auto;
-            min-height: 120px;
+            flex: 1; /* Растягивается внутри скролл-зоны */
+            min-height: 200px;
             border: none;
             background: transparent;
             color: var(--text);
@@ -178,10 +177,7 @@
             line-height: 1.5;
             resize: none;
             outline: none;
-            margin-bottom: 14px;
             display: block;
-            -webkit-user-select: text;
-            user-select: text;
             box-sizing: border-box;
         }
 
@@ -550,7 +546,9 @@
         <h3>Мои заметки 📝</h3>
         <button class="btn-settings" onclick="openSettings()">⚙️</button>
     </div>
-
+    <input type="text" id="searchInput" placeholder="🔍 Поиск по заголовку..."
+           oninput="filterNotes()"
+           style="width: 80%; padding: 8px; border-radius: 8px; border: 1px solid #ccc; margin: 10px auto; display: block;">
     <div class="notes-grid" id="notesContainer"></div>
 
     <div id="modalOverlay" class="overlay" onclick="closeModal()">
@@ -593,7 +591,12 @@
                     <option value="false">Выключена</option>
                 </select>
             </div>
-
+            <div class="settings-footer" style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+                <button onclick="deleteAllNotes()"
+                        style="background: transparent; color: #ff4d4d; border: 1px solid #ff4d4d; padding: 10px 20px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold;">
+                    Удалить все заметки
+                </button>
+            </div>
             <div style="flex-grow: 1;"></div>
             <div class="modal-buttons">
                 <button class="btn btn-close" style="width: 100%;" onclick="closeSettings()">Закрыть</button>
@@ -659,60 +662,60 @@
                     cardContentHtml = `<img src="/api/notes/media/${note.telegramFileId}" alt="Фотозаметка">`;
                 } else {
                     cardContentHtml = `
-                                    <div class="note-title">${note.title}</div>
-                                    <div class="note-content">${note.content}</div>
-                                `;
+                                        <div class="note-title">${note.title}</div>
+                                        <div class="note-content">${note.content}</div>
+                                    `;
 
                     if (note.mediaType === 'photo' && note.telegramFileId) {
                         cardContentHtml += `<img src="/api/notes/media/${note.telegramFileId}" style="width:100%; border-radius:8px; margin-top:8px; max-height:150px; object-fit:cover;" alt="Фото">`;
                     }
                     if (note.mediaType === 'video') {
                         cardContentHtml += `
-        <div class="video-preview-stub" style="background:#000; height:150px; display:flex; align-items:center; justify-content:center; border-radius:8px; margin-top:8px;">
-            <span style="color:white; font-size:40px;">▶</span>
-        </div>`;
+            <div class="video-preview-stub" style="background:#000; height:150px; display:flex; align-items:center; justify-content:center; border-radius:8px; margin-top:8px;">
+                <span style="color:white; font-size:40px;">▶</span>
+            </div>`;
                     }
                     if (note.mediaType === 'voice' && note.telegramFileId) {
                         const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                        <div class="tg-voice-player" onclick="event.stopPropagation(); toggleVoicePlay('card', ${note.id})">
-                                            <audio id="audio-card-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
-                                            <button class="tg-play-btn" id="btn-card-${note.id}">
-                                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                            </button>
-                                            <div class="tg-player-info">
-                                                <div class="tg-waveform"></div>
-                                                <span class="tg-duration" id="time-card-${note.id}">${initialTime}</span>
+                                            <div class="tg-voice-player" onclick="event.stopPropagation(); toggleVoicePlay('card', ${note.id})">
+                                                <audio id="audio-card-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                                <button class="tg-play-btn" id="btn-card-${note.id}">
+                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                </button>
+                                                <div class="tg-player-info">
+                                                    <div class="tg-waveform"></div>
+                                                    <span class="tg-duration" id="time-card-${note.id}">${initialTime}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    `;
+                                        `;
                     }
 
                     if (note.mediaType === 'video_note' && note.telegramFileId) {
                         const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                        <div class="tg-video-note-container" onclick="event.stopPropagation();">
-                                            <div class="tg-video-wrapper" onclick="toggleVideoPlay('card', ${note.id})" id="wrapper-card-${note.id}">
-                                                <video id="video-card-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
-                                                <div class="tg-video-play-btn" id="vbtn-card-${note.id}">
-                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                            <div class="tg-video-note-container" onclick="event.stopPropagation();">
+                                                <div class="tg-video-wrapper" onclick="toggleVideoPlay('card', ${note.id})" id="wrapper-card-${note.id}">
+                                                    <video id="video-card-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                                    <div class="tg-video-play-btn" id="vbtn-card-${note.id}">
+                                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                    </div>
+                                                    <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                                        <circle cx="50" cy="50" r="46" id="progress-card-${note.id}" />
+                                                    </svg>
                                                 </div>
-                                                <svg class="tg-video-progress" viewBox="0 0 100 100">
-                                                    <circle cx="50" cy="50" r="46" id="progress-card-${note.id}" />
-                                                </svg>
+                                                <span class="tg-duration" id="vtime-card-${note.id}">${initialTime}</span>
                                             </div>
-                                            <span class="tg-duration" id="vtime-card-${note.id}">${initialTime}</span>
-                                        </div>
-                                    `;
+                                        `;
                     }
                 }
 
                 card.innerHTML = `
-                                ${mediaBadgeHtml}
-                                ${cardContentHtml}
-                                ${reminderHtml}
-                                <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
-                            `;
+                                    ${mediaBadgeHtml}
+                                    ${cardContentHtml}
+                                    ${reminderHtml}
+                                    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+                                `;
 
                 card.onclick = () => openNote(note);
 
@@ -741,6 +744,7 @@
         }
 
         function openNote(note) {
+            stopAllMedia()
             currentNoteId = note.id;
             document.getElementById('noteTitle').value = note.title;
 
@@ -756,44 +760,44 @@
                 } else if (note.mediaType === 'voice') {
                     const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                                    <div class="tg-voice-player-modal" onclick="toggleVoicePlay('modal', ${note.id})">
-                                        <audio id="audio-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
-                                        <button class="tg-play-btn" id="btn-modal-${note.id}">
-                                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                        </button>
-                                        <div class="tg-player-info">
-                                            <div class="tg-waveform"></div>
-                                            <span class="tg-duration" id="time-modal-${note.id}">${initialTime}</span>
+                                        <div class="tg-voice-player-modal" onclick="toggleVoicePlay('modal', ${note.id})">
+                                            <audio id="audio-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                            <button class="tg-play-btn" id="btn-modal-${note.id}">
+                                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                            </button>
+                                            <div class="tg-player-info">
+                                                <div class="tg-waveform"></div>
+                                                <span class="tg-duration" id="time-modal-${note.id}">${initialTime}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                `;
+                                    `;
                 } else if (note.mediaType === 'video_note') {
                     const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                                    <div class="tg-video-note-container">
-                                        <div class="tg-video-wrapper" onclick="toggleVideoPlay('modal', ${note.id})" id="wrapper-modal-${note.id}">
-                                            <video id="video-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
-                                            <div class="tg-video-play-btn" id="vbtn-modal-${note.id}">
-                                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                        <div class="tg-video-note-container">
+                                            <div class="tg-video-wrapper" onclick="toggleVideoPlay('modal', ${note.id})" id="wrapper-modal-${note.id}">
+                                                <video id="video-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                                <div class="tg-video-play-btn" id="vbtn-modal-${note.id}">
+                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                </div>
+                                                <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                                    <circle cx="50" cy="50" r="46" id="progress-modal-${note.id}" />
+                                                </svg>
                                             </div>
-                                            <svg class="tg-video-progress" viewBox="0 0 100 100">
-                                                <circle cx="50" cy="50" r="46" id="progress-modal-${note.id}" />
-                                            </svg>
+                                            <span class="tg-duration" id="vtime-modal-${note.id}">${initialTime}</span>
                                         </div>
-                                        <span class="tg-duration" id="vtime-modal-${note.id}">${initialTime}</span>
-                                    </div>
-                                `;
+                                    `;
 
                 } else if (note.mediaType === 'video') {
                     // Для обычного видео используем стандартный плеер в модалке
                     mediaContainer.innerHTML = `
-        <div class="video-container" style="width:100%;">
-            <video src="/api/notes/media/${note.telegramFileId}" 
-                   style="width:100%; border-radius:8px;" 
-                   controls 
-                   playsinline>
-            </video>
-        </div>`;
+            <div class="video-container" style="width:100%;">
+                <video src="/api/notes/media/${note.telegramFileId}"
+                       style="width:100%; border-radius:8px;"
+                       controls
+                       playsinline>
+                </video>
+            </div>`;
                 }
             }
 
@@ -821,10 +825,25 @@
         }
 
         function closeModal() {
+            stopAllMedia()
             const overlay = document.getElementById('modalOverlay');
             const content = document.getElementById('modalContent');
             overlay.style.opacity = '0'; content.style.transform = 'translateY(100%)';
             setTimeout(() => { overlay.style.display = 'none'; loadNotes(); }, 250);
+        }
+        function stopAllMedia() {
+            // 1. Ищем ВСЕ элементы video и audio в документе
+            const allMedia = document.querySelectorAll('video, audio');
+
+            allMedia.forEach(media => {
+                media.pause();
+                media.currentTime = 0;
+            });
+
+            // 2. Если у тебя есть кастомные флаги для твоего плеера кружков
+            // сбрасываем иконки Play (если они менялись на Pause)
+            const playButtons = document.querySelectorAll('.tg-video-play-btn');
+            playButtons.forEach(btn => btn.style.display = 'flex');
         }
 
         // ПРИМЕР (если у тебя разделены PUT и POST на бэкенде):
@@ -1038,9 +1057,54 @@
                 }
             });
         });
-       
 
-        
+        async function deleteAllNotes() {
+            // 1. Обязательное подтверждение
+            if (!confirm("Ты уверен? Это удалит абсолютно все заметки без возможности восстановления!")) {
+                return;
+            }
+
+            try {
+                // 2. Отправляем запрос к новому методу
+                // userId — это твоя глобальная переменная с ID текущего пользователя
+                const response = await fetch(`/api/notes/user/${userId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    // 3. Если сервер ответил 200 OK — перезагружаем страницу
+                    alert("Все заметки удалены.");
+                    location.reload();
+                } else {
+                    alert("Произошла ошибка на сервере.");
+                }
+            } catch (error) {
+                console.error("Ошибка сети:", error);
+                alert("Не удалось связаться с сервером.");
+            }
+        }
+        function filterNotes() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            // Ищем все элементы с классом note-card
+            const cards = document.querySelectorAll('.note-card');
+
+            cards.forEach(card => {
+                // Ищем заголовок внутри карточки. 
+                // У тебя заголовок в .note-title, но если это фото-заметка, заголовка может не быть.
+                const titleEl = card.querySelector('.note-title');
+                const title = titleEl ? titleEl.innerText.toLowerCase() : "";
+
+                // Сравниваем
+                if (title.includes(query)) {
+                    card.style.display = ""; // Показываем
+                } else {
+                    card.style.display = "none"; // Скрываем
+                }
+            });
+        }
         loadNotes();
         loadSettings();
     </script>

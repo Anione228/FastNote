@@ -101,6 +101,22 @@ app.MapPost("/api/notes", async (Note note) =>
     await db.SaveChangesAsync();
     return Results.Ok(note);
 });
+// Массовое удаление всех заметок пользователя
+app.MapDelete("/api/notes/user/{userId}", async (long userId) =>
+{
+    using var db = new AppDbContext();
+
+    // Получаем все заметки этого юзера одним запросом
+    var userNotes = db.Notes.Where(n => n.UserId == userId);
+
+    // Удаляем их все сразу
+    db.Notes.RemoveRange(userNotes);
+
+    // Один раз сохраняем изменения
+    await db.SaveChangesAsync();
+
+    return Results.Ok();
+});
 // Метод для удаления заметки
 app.MapDelete("/api/notes/{id}", async (int id) =>
 {
