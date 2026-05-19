@@ -1,5 +1,6 @@
-﻿using Microsoft.Extensions.Hosting;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
+using System.Collections.Concurrent;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -10,7 +11,8 @@ namespace FastNote1._1
     {
         private readonly ITelegramBotClient _botClient;
         private readonly BotSettings _settings;
-
+        private static readonly ConcurrentDictionary<long, List<Message>> _forwardQueue = new();
+        private static readonly ConcurrentDictionary<long, SemaphoreSlim> _locks = new();
         // Конструктор принимает настройки из DI-контейнера
         public BotWorker(BotSettings settings)
         {
@@ -99,16 +101,57 @@ namespace FastNote1._1
 
         private async Task UpdateHandler(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            // Нас интересуют только текстовые или медиа сообщения из чатов
-            if (update.Message is { } message)
-            {
-                string? userText = message.Text;
-                long userId = message.Chat.Id;
+            if (update.Message is not { } message) return;
 
-                // ==========================================
-                // 0. КОМАНДА /start: Приветствие и инструкция
-                // ==========================================
-                if (userText?.ToLower() == "/start")
+            long userId = message.Chat.Id;
+
+            // 1. ПРОВЕРКА НА ПЕРЕСЫЛКУ
+            bool isForwarded = message.ForwardFrom != null || message.ForwardFromChat != null || !string.IsNullOrEmpty(message.ForwardSenderName);
+
+            if (isForwarded)
+            {
+                var semaphore = _locks.GetOrAdd(userId, new SemaphoreSlim(1, 1));
+                await semaphore.WaitAsync();
+
+                try
+                {
+                    var list = _forwardQueue.GetOrAdd(userId, new List<Message>());
+                    list.Add(message);
+
+                    if (list.Count == 1)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(1500);
+                            await semaphore.WaitAsync();
+                            try
+                            {
+                                if (_forwardQueue.TryRemove(userId, out var msgs))
+                                {
+                                    await ProcessForwardedBatch(botClient, userId, msgs, cancellationToken);
+                                }
+                            }
+                            finally
+                            {
+                                semaphore.Release();
+                            }
+                        });
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+                return; // ВАЖНО: Выходим только если это пересылка!
+            }
+
+            // 2. ЕСЛИ МЫ ДОШЛИ СЮДА — ЭТО НЕ ПЕРЕСЫЛКА
+            // Теперь здесь спокойно выполняем твою обычную логику:
+            string? userText = message.Text;
+            // ==========================================
+            // 0. КОМАНДА /start: Приветствие и инструкция
+            // ==========================================
+            if (userText?.ToLower() == "/start")
                 {
                     string welcomeText =
                         "👋 <b>Привет! Я твой персональный бот для быстрых заметок FastNote.</b>\n\n" +
@@ -342,7 +385,7 @@ namespace FastNote1._1
                                 "photo" => "📷 Фотозаметка",
                                 "voice" => "🎙 Голосовая заметка",
                                 "video_note" => "🔵 Кружок",
-                                "video"=> "🎬 Видео",
+                                "video" => "🎬 Видео",
                                 _ => "Заметка"
                             };
                         }
@@ -389,6 +432,42 @@ namespace FastNote1._1
                     cancellationToken: cancellationToken
                 );
             }
+        
+        private async Task ProcessForwardedBatch(ITelegramBotClient botClient, long userId, List<Message> messages, CancellationToken ct)
+        {
+            // 1. Создаем "мастер-заметку"
+            var newNote = new Note
+            {
+                UserId = userId,
+                CreatedAt = DateTime.Now,
+                Title = $"Пересылка ({messages.Count} сообщ.)",
+                Content = "",
+                MediaType = "text"
+            };
+
+            using (var db = new AppDbContext())
+            {
+                db.Notes.Add(newNote);
+                await db.SaveChangesAsync(ct);
+
+                // 2. Наполняем контент текстом из всех сообщений
+                foreach (var msg in messages)
+                {
+                    if (!string.IsNullOrEmpty(msg.Text))
+                        newNote.Content += (string.IsNullOrEmpty(newNote.Content) ? "" : "\n---\n") + msg.Text;
+
+                    // Если в пакете есть медиа, берем самое первое (так как твоя модель держит только 1)
+                    if (newNote.TelegramFileId == null)
+                    {
+                        if (msg.Photo != null) { newNote.TelegramFileId = msg.Photo.Last().FileId; newNote.MediaType = "photo"; }
+                        else if (msg.Voice != null) { newNote.TelegramFileId = msg.Voice.FileId; newNote.MediaType = "voice"; }
+                        // и т.д. для других типов
+                    }
+                }
+                await db.SaveChangesAsync(ct);
+            }
+
+            await botClient.SendMessage(userId, $"✅ Сохранено {messages.Count} сообщений в одну заметку!", cancellationToken: ct);
         }
         private Task ErrorHandler(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
         {
