@@ -18,7 +18,7 @@ namespace FastNote1._1
             _botClient = new TelegramBotClient(_settings.Token);
         }
 
-      
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _botClient.StartReceiving(
