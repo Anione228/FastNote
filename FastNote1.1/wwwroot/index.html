@@ -641,6 +641,21 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 0;
+        const channel = new BroadcastChannel('miniapp_single_instance');
+
+        // Сигнализируем, что открылось новое окно
+        channel.postMessage('new_window_opened');
+
+        channel.onmessage = (event) => {
+            if (event.data === 'new_window_opened') {
+                // Отправляем ответ новому окну, что мы уже работаем
+                channel.postMessage('already_running');
+            } else if (event.data === 'already_running') {
+                // Если получили такой ответ, блокируем интерфейс текущего (нового) окна
+                document.body.innerHTML = "<h1>Приложение уже открыто в другом окне!</h1>";
+            }
+        };
+
 
         // Глобальное состояние
         let currentNoteId = null;
@@ -1199,6 +1214,10 @@
                 console.error("Ошибка сети:", error);
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadNotes();
+        });
     </script>
 </body>
 </html>
