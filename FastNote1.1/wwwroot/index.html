@@ -6,6 +6,9 @@
     <title>Notes Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        /* ======================================================== */
+        /* ПЕРЕМЕННЫЕ — пробрасываем цвета из темы Telegram         */
+        /* ======================================================== */
         :root {
             --bg: var(--tg-theme-bg-color, #fafafa);
             --text: var(--tg-theme-text-color, #222);
@@ -14,6 +17,9 @@
             --accent: var(--tg-theme-button-color, #3390ec);
         }
 
+        /* ======================================================== */
+        /* БАЗОВЫЙ LAYOUT                                           */
+        /* ======================================================== */
         body {
             background-color: var(--bg);
             color: var(--text);
@@ -43,6 +49,9 @@
                 transform: rotate(45deg);
             }
 
+        /* ======================================================== */
+        /* СЕТКА КАРТОЧЕК                                           */
+        /* ======================================================== */
         .notes-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -67,13 +76,13 @@
             flex-direction: column;
             -webkit-user-select: none;
             user-select: none;
-            
         }
 
             .note-card:active {
                 transform: scale(0.96);
             }
 
+        /* Заголовок карточки — однострочный с ellipsis */
         .note-title {
             font-weight: bold;
             font-size: 15px;
@@ -82,9 +91,9 @@
             overflow: hidden;
             text-overflow: ellipsis;
             flex-shrink: 0;
-         
         }
 
+        /* Текст карточки — максимум 3 строки */
         .note-content {
             font-size: 13px;
             opacity: 0.8;
@@ -93,9 +102,9 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             flex-grow: 1;
-           
         }
 
+        /* Бейдж напоминания — правый нижний угол карточки */
         .reminder-badge {
             position: absolute;
             bottom: 8px;
@@ -113,7 +122,11 @@
             z-index: 5;
         }
 
-        /* Общие стили для оверлеев модалок */
+        /* ======================================================== */
+        /* МОДАЛЬНЫЕ ОКНА                                           */
+        /* ======================================================== */
+
+        /* Полупрозрачный оверлей с blur-фоном */
         .overlay {
             display: none;
             position: fixed;
@@ -131,7 +144,7 @@
             transition: opacity 0.25s ease;
         }
 
-        /* Контентное окно модалки */
+        /* Sheet-панель, выезжает снизу */
         .modal-content {
             display: flex;
             flex-direction: column;
@@ -143,15 +156,15 @@
             width: 100%;
         }
 
-        /* Зона скролла */
+        /* Скролл-зона между заголовком и кнопками */
         .modal-scroll-area {
-            flex: 1; /* Занимает всё свободное место между заголовком и кнопками */
-            overflow-y: auto; /* Включает скролл именно здесь */
+            flex: 1;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
         }
 
-        /* Поле изменения заголовка в заметке */
+        /* Поле редактирования заголовка заметки */
         .title-input {
             width: 100%;
             border: none;
@@ -167,10 +180,10 @@
             box-sizing: border-box;
         }
 
-        /* Редактор текста */
+        /* Текстовый редактор — авто-расширяется через JS */
         #noteEditor {
             width: 100%;
-            flex: 1; /* Растягивается внутри скролл-зоны */
+            flex: 1;
             min-height: 200px;
             border: none;
             background: transparent;
@@ -184,14 +197,14 @@
             box-sizing: border-box;
         }
 
-        /* Контейнер для медиа файлов */
+        /* Контейнер медиа-вложения в модалке */
         #modalMediaContainer {
             width: 100%;
             margin-bottom: 14px;
             display: block;
         }
 
-        /* Адаптивное превью фото в модалке */
+        /* Превью фото в модалке */
         .modal-photo-preview {
             width: 100%;
             max-height: 380px;
@@ -200,7 +213,7 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
 
-        /* Блок настроек и напоминаний */
+        /* Блок настроек / напоминания */
         .input-block {
             margin-top: 14px;
             margin-bottom: 14px;
@@ -233,7 +246,7 @@
                 display: block;
             }
 
-        /* Кнопки жестко зафиксированы в самом низу */
+        /* Кнопки зафиксированы в самом низу модалки */
         .modal-buttons {
             flex-shrink: 0;
             display: flex;
@@ -305,6 +318,10 @@
             }
         }
 
+        /* ======================================================== */
+        /* МЕДИА-БЕЙДЖИ И ФОТО-КАРТОЧКИ                           */
+        /* ======================================================== */
+
         .media-badge {
             position: absolute;
             top: 8px;
@@ -344,10 +361,10 @@
         }
 
         /* ======================================================== */
-        /* КАСТОМНЫЕ ПЛЕЕРЫ В СТИЛЕ TELEGRAM                       */
+        /* ГОЛОСОВОЙ ПЛЕЕР В СТИЛЕ TELEGRAM                       */
         /* ======================================================== */
 
-        /* 1. ДЛЯ ПЛИТКИ (ПРЕВЬЮ): Оригинальный, компактный */
+        /* Компактный вариант — в плитке карточек */
         .tg-voice-player {
             display: flex;
             align-items: center;
@@ -361,7 +378,7 @@
             width: 100%;
         }
 
-        /* 2. ДЛЯ ЗАМЕТКИ (МОДАЛКИ): Свободно растягивается */
+        /* Расширенный вариант — в модалке заметки */
         .tg-voice-player-modal {
             display: flex;
             align-items: center;
@@ -423,7 +440,9 @@
             color: var(--hint);
         }
 
-        /* Видео-кружки */
+        /* ======================================================== */
+        /* ВИДЕО-КРУЖКИ (video_note)                               */
+        /* ======================================================== */
         .tg-video-note-container {
             display: flex;
             flex-direction: column;
@@ -516,7 +535,11 @@
                 stroke-linecap: round;
                 transition: stroke-dashoffset 0.1s linear;
             }
-        /* Плавающая кнопка (FAB) в правом нижнем углу */
+        /* ======================================================== */
+        /* FAB — плавающая кнопка создания заметки                 */
+        /* ======================================================== */
+
+        /* z-index: 90 — ниже оверлея (100), но выше карточек */
         .fab-btn {
             position: fixed;
             bottom: 24px;
@@ -612,23 +635,37 @@
     </div>
     <button class="fab-btn" onclick="createNewNote()">＋</button>
     <script>
+        // ============================================================
+        // Инициализация Telegram Web App
+        // ============================================================
         const tg = window.Telegram.WebApp;
         tg.expand();
         const userId = tg.initDataUnsafe?.user?.id || 0;
 
+        // Глобальное состояние
         let currentNoteId = null;
         let longPressTimer;
 
+        // URL-параметры: открытие конкретной заметки или экшена из бота
         const urlParams = new URLSearchParams(window.location.search);
         let targetNoteId = urlParams.get('noteId');
         const action = urlParams.get('action');
 
+        // ============================================================
+        // Утилиты
+        // ============================================================
+
+        /** Форматирует секунды в строку «M:SS». */
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds === Infinity) return "0:00";
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
         }
+
+        // ============================================================
+        // Загрузка и рендер заметок
+        // ============================================================
 
         async function loadNotes() {
             const res = await fetch(`/api/notes/${userId}`);
@@ -681,54 +718,54 @@
                     }
                     if (note.mediaType === 'video') {
                         cardContentHtml += `
-            <div class="video-preview-stub" style="background:#000; height:150px; display:flex; align-items:center; justify-content:center; border-radius:8px; margin-top:8px;">
-                <span style="color:white; font-size:40px;">▶</span>
-            </div>`;
+                <div class="video-preview-stub" style="background:#000; height:150px; display:flex; align-items:center; justify-content:center; border-radius:8px; margin-top:8px;">
+                    <span style="color:white; font-size:40px;">▶</span>
+                </div>`;
                     }
                     if (note.mediaType === 'voice' && note.telegramFileId) {
                         const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                            <div class="tg-voice-player" onclick="event.stopPropagation(); toggleVoicePlay('card', ${note.id})">
-                                                <audio id="audio-card-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
-                                                <button class="tg-play-btn" id="btn-card-${note.id}">
-                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                                </button>
-                                                <div class="tg-player-info">
-                                                    <div class="tg-waveform"></div>
-                                                    <span class="tg-duration" id="time-card-${note.id}">${initialTime}</span>
+                                                <div class="tg-voice-player" onclick="event.stopPropagation(); toggleVoicePlay('card', ${note.id})">
+                                                    <audio id="audio-card-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                                    <button class="tg-play-btn" id="btn-card-${note.id}">
+                                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                    </button>
+                                                    <div class="tg-player-info">
+                                                        <div class="tg-waveform"></div>
+                                                        <span class="tg-duration" id="time-card-${note.id}">${initialTime}</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        `;
+                                            `;
                     }
 
                     if (note.mediaType === 'video_note' && note.telegramFileId) {
                         const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                         cardContentHtml += `
-                                            <div class="tg-video-note-container" onclick="event.stopPropagation();">
-                                                <div class="tg-video-wrapper" onclick="toggleVideoPlay('card', ${note.id})" id="wrapper-card-${note.id}">
-                                                    <video id="video-card-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
-                                                    <div class="tg-video-play-btn" id="vbtn-card-${note.id}">
-                                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                <div class="tg-video-note-container" onclick="event.stopPropagation();">
+                                                    <div class="tg-video-wrapper" onclick="toggleVideoPlay('card', ${note.id})" id="wrapper-card-${note.id}">
+                                                        <video id="video-card-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                                        <div class="tg-video-play-btn" id="vbtn-card-${note.id}">
+                                                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                        </div>
+                                                        <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                                            <circle cx="50" cy="50" r="46" id="progress-card-${note.id}" />
+                                                        </svg>
                                                     </div>
-                                                    <svg class="tg-video-progress" viewBox="0 0 100 100">
-                                                        <circle cx="50" cy="50" r="46" id="progress-card-${note.id}" />
-                                                    </svg>
+                                                    <span class="tg-duration" id="vtime-card-${note.id}">${initialTime}</span>
                                                 </div>
-                                                <span class="tg-duration" id="vtime-card-${note.id}">${initialTime}</span>
-                                            </div>
-                                        `;
+                                            `;
                     }
                 }
                 const pinIcon = note.isPinned ? '📌' : '📍';
                 card.innerHTML = `
-    <div class="pin-badge" onclick="togglePinNote(event, ${note.id}, ${note.isPinned || 0})" 
-         style="position: absolute; bottom: 8px; left: 8px; z-index: 5; font-size: 14px; cursor: pointer; padding: 4px; -webkit-tap-highlight-color: transparent;">
-        ${pinIcon}
-    </div>
-    ${mediaBadgeHtml}
-    ${cardContentHtml}
-    ${reminderHtml}
-    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+        <div class="pin-badge" onclick="togglePinNote(event, ${note.id}, ${note.isPinned || 0})"
+             style="position: absolute; bottom: 8px; left: 8px; z-index: 5; font-size: 14px; cursor: pointer; padding: 4px; -webkit-tap-highlight-color: transparent;">
+            ${pinIcon}
+        </div>
+        ${mediaBadgeHtml}
+        ${cardContentHtml}
+        ${reminderHtml}
+        <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
 `;
 
                 card.onclick = () => openNote(note);
@@ -757,6 +794,10 @@
             }
         }
 
+        // ============================================================
+        // Модалка заметки — открытие, закрытие, сохранение
+        // ============================================================
+
         function openNote(note) {
             stopAllMedia()
             currentNoteId = note.id;
@@ -774,44 +815,44 @@
                 } else if (note.mediaType === 'voice') {
                     const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                                        <div class="tg-voice-player-modal" onclick="toggleVoicePlay('modal', ${note.id})">
-                                            <audio id="audio-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
-                                            <button class="tg-play-btn" id="btn-modal-${note.id}">
-                                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                            </button>
-                                            <div class="tg-player-info">
-                                                <div class="tg-waveform"></div>
-                                                <span class="tg-duration" id="time-modal-${note.id}">${initialTime}</span>
+                                            <div class="tg-voice-player-modal" onclick="toggleVoicePlay('modal', ${note.id})">
+                                                <audio id="audio-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}"></audio>
+                                                <button class="tg-play-btn" id="btn-modal-${note.id}">
+                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                </button>
+                                                <div class="tg-player-info">
+                                                    <div class="tg-waveform"></div>
+                                                    <span class="tg-duration" id="time-modal-${note.id}">${initialTime}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    `;
+                                        `;
                 } else if (note.mediaType === 'video_note') {
                     const initialTime = note.duration ? formatTime(note.duration) : '0:00';
                     mediaContainer.innerHTML = `
-                                        <div class="tg-video-note-container">
-                                            <div class="tg-video-wrapper" onclick="toggleVideoPlay('modal', ${note.id})" id="wrapper-modal-${note.id}">
-                                                <video id="video-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
-                                                <div class="tg-video-play-btn" id="vbtn-modal-${note.id}">
-                                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                            <div class="tg-video-note-container">
+                                                <div class="tg-video-wrapper" onclick="toggleVideoPlay('modal', ${note.id})" id="wrapper-modal-${note.id}">
+                                                    <video id="video-modal-${note.id}" src="/api/notes/media/${note.telegramFileId}" playsinline></video>
+                                                    <div class="tg-video-play-btn" id="vbtn-modal-${note.id}">
+                                                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                                    </div>
+                                                    <svg class="tg-video-progress" viewBox="0 0 100 100">
+                                                        <circle cx="50" cy="50" r="46" id="progress-modal-${note.id}" />
+                                                    </svg>
                                                 </div>
-                                                <svg class="tg-video-progress" viewBox="0 0 100 100">
-                                                    <circle cx="50" cy="50" r="46" id="progress-modal-${note.id}" />
-                                                </svg>
+                                                <span class="tg-duration" id="vtime-modal-${note.id}">${initialTime}</span>
                                             </div>
-                                            <span class="tg-duration" id="vtime-modal-${note.id}">${initialTime}</span>
-                                        </div>
-                                    `;
+                                        `;
 
                 } else if (note.mediaType === 'video') {
                     // Для обычного видео используем стандартный плеер в модалке
                     mediaContainer.innerHTML = `
-            <div class="video-container" style="width:100%;">
-                <video src="/api/notes/media/${note.telegramFileId}"
-                       style="width:100%; border-radius:8px;"
-                       controls
-                       playsinline>
-                </video>
-            </div>`;
+                <div class="video-container" style="width:100%;">
+                    <video src="/api/notes/media/${note.telegramFileId}"
+                           style="width:100%; border-radius:8px;"
+                           controls
+                           playsinline>
+                    </video>
+                </div>`;
                 }
             }
 
@@ -845,8 +886,13 @@
             overlay.style.opacity = '0'; content.style.transform = 'translateY(100%)';
             setTimeout(() => { overlay.style.display = 'none'; loadNotes(); }, 250);
         }
+        // ============================================================
+        // Медиа-плееры — воспроизведение, сброс, остановка
+        // ============================================================
+
+        /** Останавливает все audio/video и сбрасывает UI кружков. */
         function stopAllMedia() {
-            // 1. Ищем ВСЕ элементы video и audio в документе
+            // Паузим и перематываем в начало все медиа-элементы
             const allMedia = document.querySelectorAll('video, audio');
 
             allMedia.forEach(media => {
@@ -854,13 +900,15 @@
                 media.currentTime = 0;
             });
 
-            // 2. Если у тебя есть кастомные флаги для твоего плеера кружков
-            // сбрасываем иконки Play (если они менялись на Pause)
+            // Сбрасываем иконки кружков (Play вместо Pause)
             const playButtons = document.querySelectorAll('.tg-video-play-btn');
             playButtons.forEach(btn => btn.style.display = 'flex');
         }
 
-        // ПРИМЕР (если у тебя разделены PUT и POST на бэкенде):
+        // ============================================================
+        // Сохранение заметки — POST (новая) или PUT (обновление)
+        // ============================================================
+
         async function saveNote() {
             const newTitle = document.getElementById('noteTitle').value.trim() || "Без заголовка";
             const newContent = document.getElementById('noteEditor').value;
@@ -892,6 +940,10 @@
 
             closeModal();
         }
+
+        // ============================================================
+        // Настройки — загрузка, сохранение, открытие панели
+        // ============================================================
 
         async function loadSettings() {
             const res = await fetch(`/api/settings/${userId}`);
@@ -930,6 +982,10 @@
             overlay.style.opacity = '0'; content.style.transform = 'translateY(100%)';
             setTimeout(() => { overlay.style.display = 'none'; }, 250);
         }
+
+        // ============================================================
+        // Управление заметками — удаление, поиск, закрепление
+        // ============================================================
 
         async function deleteNote(event, id) {
             event.stopPropagation();
@@ -1028,15 +1084,16 @@
                 wrapper.classList.remove('playing');
             }
         }
-        function createNewNote() {
-            // Вызываем вибрацию на телефоне при клике
-            if (tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
-            }
+        // ============================================================
+        // Создание новой заметки (FAB)
+        // ============================================================
 
-            // Создаем пустой объект-заготовку
+        function createNewNote() {
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+            // Пустая заготовка — POST на бэкенд произойдёт при сохранении
             const emptyNote = {
-                id: 0, // 0 или null (зависит от того, как принимает твой PUT/POST на бэкенде)
+                id: 0,
                 title: '',
                 content: '',
                 mediaType: 'text',
@@ -1044,7 +1101,6 @@
                 reminderAt: null
             };
 
-            // Открываем модальное окно с этой пустышкой
             openNote(emptyNote);
         }
         function resetVideoUI(prefix, id) {
@@ -1063,6 +1119,11 @@
             }
         }
 
+        // ============================================================
+        // Глобальные обработчики
+        // ============================================================
+
+        // Скрываем кнопку удаления при клике вне карточки
         document.addEventListener('click', (event) => {
             const deleteButtons = document.querySelectorAll('.delete-btn');
             deleteButtons.forEach(btn => {
@@ -1072,15 +1133,18 @@
             });
         });
 
+        // ============================================================
+        // Старт
+        // ============================================================
+        loadNotes();
+        loadSettings();
+
         async function deleteAllNotes() {
-            // 1. Обязательное подтверждение
             if (!confirm("Ты уверен? Это удалит абсолютно все заметки без возможности восстановления!")) {
                 return;
             }
 
             try {
-                // 2. Отправляем запрос к новому методу
-                // userId — это твоя глобальная переменная с ID текущего пользователя
                 const response = await fetch(`/api/notes/user/${userId}`, {
                     method: 'DELETE',
                     headers: {
@@ -1089,7 +1153,6 @@
                 });
 
                 if (response.ok) {
-                    // 3. Если сервер ответил 200 OK — перезагружаем страницу
                     alert("Все заметки удалены.");
                     location.reload();
                 } else {
@@ -1100,30 +1163,24 @@
                 alert("Не удалось связаться с сервером.");
             }
         }
+
+        /** Фильтрует карточки по заголовку в реальном времени (поиск). */
         function filterNotes() {
             const query = document.getElementById('searchInput').value.toLowerCase();
-            // Ищем все элементы с классом note-card
             const cards = document.querySelectorAll('.note-card');
 
             cards.forEach(card => {
-                // Ищем заголовок внутри карточки. 
-                // У тебя заголовок в .note-title, но если это фото-заметка, заголовка может не быть.
                 const titleEl = card.querySelector('.note-title');
                 const title = titleEl ? titleEl.innerText.toLowerCase() : "";
-
-                // Сравниваем
-                if (title.includes(query)) {
-                    card.style.display = ""; // Показываем
-                } else {
-                    card.style.display = "none"; // Скрываем
-                }
+                card.style.display = title.includes(query) ? "" : "none";
             });
         }
-        //НОВАЯ ФИЯ
-        async function togglePinNote(event, id, currentStatus) {
-            event.stopPropagation(); // Чтобы при клике на булавку не открывалась сама заметка
 
-            const newStatus = currentStatus ? 0 : 1; // Переключаем 0 и 1
+        /** Переключает закрепление заметки и перезагружает список. */
+        async function togglePinNote(event, id, currentStatus) {
+            event.stopPropagation(); // Не открываем заметку при клике на булавку
+
+            const newStatus = currentStatus ? 0 : 1;
 
             try {
                 const response = await fetch(`/api/notes/pin/${id}`, {
@@ -1133,11 +1190,8 @@
                 });
 
                 if (response.ok) {
-                    // Вызываем легкую вибрацию на смартфоне в стиле Telegram
-                    if (tg.HapticFeedback) {
-                        tg.HapticFeedback.impactOccurred('light');
-                    }
-                    loadNotes(); // Перезагружаем заметки, чтобы применилась новая сортировка
+                    if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+                    loadNotes();
                 } else {
                     alert("Не удалось изменить статус закрепления");
                 }
@@ -1145,8 +1199,6 @@
                 console.error("Ошибка сети:", error);
             }
         }
-        loadNotes();
-        loadSettings();
     </script>
 </body>
 </html>

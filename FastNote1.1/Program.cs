@@ -2,63 +2,62 @@ using FastNote1._1;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 
 var builder = WebApplication.CreateBuilder(args);
-var botSettings = builder.Configuration.GetSection("BotSettings").Get<BotSettings>();
 
-// 2. Регистрируем настройки в DI-контейнере (чтобы их мог прочитать BotWorker)
+// Читаем секцию BotSettings из appsettings.json
+var botSettings = builder.Configuration
+    .GetSection("BotSettings")
+    .Get<BotSettings>();
+
+// Регистрируем настройки и фоновый сервис в DI-контейнере
 builder.Services.AddSingleton(botSettings);
-
 builder.Services.AddHostedService<BotWorker>();
 
 var app = builder.Build();
 
-// Автоматически создаем файл базы данных при старте, если его еще нет
+// Создаём файл базы данных при первом запуске (SQLite)
 using (var scope = app.Services.CreateScope())
-{
-    using var db = new AppDbContext();
+using (var db = new AppDbContext())
     db.Database.EnsureCreated();
-}
 
 app.UseFileServer();
 
-// ЭНДПОИНТ ПОЛУЧЕНИЯ ЗАМЕТОК (ИСПРАВЛЕННЫЙ)
+// GET /api/notes/{userId}
+// Возвращает все заметки пользователя:
+//   сначала закреплённые, затем по убыванию даты создания.
 app.MapGet("/api/notes/{userId}", async (long userId) =>
 {
     using var db = new AppDbContext();
 
-    // ФИКС: Обязательно сортируем по убыванию даты (OrderByDescending),
-    // чтобы новые и поднятые точкой (.) заметки были в самом верху списка!
-    var notes = await db.Notes
-        .Where(n => n.UserId == userId)
-        .OrderByDescending(n => n.isPinned)
-        .OrderByDescending(n => n.CreatedAt)
-        .ToListAsync();
+var notes = await db.Notes
+    .Where(n => n.UserId == userId)
+    .OrderByDescending(n => n.isPinned)
+    .OrderByDescending(n => n.CreatedAt)
+    .ToListAsync();
 
-    // SQLite стирает информацию о таймзоне. Явно говорим C#, что это UTC.
-    foreach (var note in notes)
-    {
-        if (note.ReminderAt.HasValue)
-        {
-            note.ReminderAt = DateTime.SpecifyKind(note.ReminderAt.Value, DateTimeKind.Utc);
-        }
-    }
-    return Results.Ok(notes);
+// SQLite не хранит timezone — явно помечаем время как UTC
+foreach (var note in notes)
+    if (note.ReminderAt.HasValue)
+        note.ReminderAt = DateTime.SpecifyKind(note.ReminderAt.Value, DateTimeKind.Utc);
+
+return Results.Ok(notes);
 });
-// ЭНДПОИНТ ДЛЯ ЗАКРЕПЛЕНИЯ/ОТКРЕПЛЕНИЯ ЗАМЕТКИ
-app.MapPost("/api/notes/pin/{id}", async (int id) =>
+
+// POST /api/notes
+// Создаёт новую заметку, выставляя время по серверу (UTC+3).
+app.MapPost("/api/notes", async (Note note) =>
 {
     using var db = new AppDbContext();
-    var note = await db.Notes.FindAsync(id);
-    if (note == null) return Results.NotFound();
-
-    // Просто инвертируем булево значение (был true -> стал false)
-    note.isPinned = !note.isPinned;
-
-    await db.SaveChangesAsync();
-    return Results.Ok(new { isPinned = note.isPinned });
+note.CreatedAt = DateTime.UtcNow.AddHours(3);
+db.Notes.Add(note);
+await db.SaveChangesAsync();
+return Results.Ok(note);
 });
-// Изменение заметки
+
+// PUT /api/notes/{id}
+// Обновляет заголовок, текст и время напоминания заметки.
 app.MapPut("/api/notes/{id}", async (int id, Note updatedNote) =>
 {
     using var db = new AppDbContext();
@@ -73,13 +72,50 @@ app.MapPut("/api/notes/{id}", async (int id, Note updatedNote) =>
     return Results.NoContent();
 });
 
-// ПОЛУЧЕНИЕ НАСТРОЕК
+// POST /api/notes/pin/{id}
+// Переключает флаг закрепления заметки (toggle).
+app.MapPost("/api/notes/pin/{id}", async (int id) =>
+{
+    using var db = new AppDbContext();
+    var note = await db.Notes.FindAsync(id);
+    if (note == null) return Results.NotFound();
+
+    note.isPinned = !note.isPinned;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { isPinned = note.isPinned });
+});
+
+// DELETE /api/notes/{id}  — удаляет одну заметку по id
+app.MapDelete("/api/notes/{id}", async (int id) =>
+{
+    using var db = new AppDbContext();
+    var note = await db.Notes.FindAsync(id);
+    if (note == null) return Results.NotFound();
+
+    db.Notes.Remove(note);
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// DELETE /api/notes/user/{userId}  — удаляет все заметки пользователя одним запросом
+app.MapDelete("/api/notes/user/{userId}", async (long userId) =>
+{
+    using var db = new AppDbContext();
+    var userNotes = db.Notes.Where(n => n.UserId == userId);
+    db.Notes.RemoveRange(userNotes);
+    await db.SaveChangesAsync();
+    return Results.Ok();
+});
+
+// GET /api/settings/{userId}
+// Возвращает настройки пользователя (тип заголовка + транскрипция).
+// Если записи нет — возвращает значения по умолчанию.
 app.MapGet("/api/settings/{userId}", async (long userId) =>
 {
     using var db = new AppDbContext();
     var setting = await db.UserSettings.FindAsync(userId);
 
-    // Возвращаем объект, где IsTranscriptionEnabled - это булево значение (true/false)
     return Results.Ok(new
     {
         titleType = setting?.TitleType ?? "auto",
@@ -87,7 +123,8 @@ app.MapGet("/api/settings/{userId}", async (long userId) =>
     });
 });
 
-// СОХРАНЕНИЕ НАСТРОЕК
+// POST /api/settings
+// Создаёт или обновляет настройки пользователя (upsert).
 app.MapPost("/api/settings", async (UserSetting setting) =>
 {
     using var db = new AppDbContext();
@@ -100,56 +137,23 @@ app.MapPost("/api/settings", async (UserSetting setting) =>
     else
     {
         existing.TitleType = setting.TitleType;
-        existing.IsTranscriptionEnabled = setting.IsTranscriptionEnabled; // ВОТ ЭТО БЫЛО ПРОПУЩЕНО?
+        existing.IsTranscriptionEnabled = setting.IsTranscriptionEnabled;
     }
-    await db.SaveChangesAsync();
-    return Results.Ok();
-});
-// СОЗДАНИЕ НОВОЙ ЗАМЕТКИ
-app.MapPost("/api/notes", async (Note note) =>
-{
-    using var db = new AppDbContext();
-    note.CreatedAt = DateTime.UtcNow.AddHours(3); ; // Ставим время сервера
-    db.Notes.Add(note);
-    await db.SaveChangesAsync();
-    return Results.Ok(note);
-});
-// Массовое удаление всех заметок пользователя
-app.MapDelete("/api/notes/user/{userId}", async (long userId) =>
-{
-    using var db = new AppDbContext();
 
-    // Получаем все заметки этого юзера одним запросом
-    var userNotes = db.Notes.Where(n => n.UserId == userId);
-
-    // Удаляем их все сразу
-    db.Notes.RemoveRange(userNotes);
-
-    // Один раз сохраняем изменения
-    await db.SaveChangesAsync();
-
-    return Results.Ok();
-});
-// Метод для удаления заметки
-app.MapDelete("/api/notes/{id}", async (int id) =>
-{
-    using var db = new AppDbContext();
-    var note = await db.Notes.FindAsync(id);
-    if (note == null) return Results.NotFound();
-
-    db.Notes.Remove(note);
     await db.SaveChangesAsync();
     return Results.Ok();
 });
 
-// Эндпоинт для получения прямой ссылки на медиафайл из Телеграма
+// GET /api/notes/media/{fileId}
+// Получает прямую ссылку на файл из Telegram и делает редирект.
+// Токен бота берётся из DI-контейнера (BotSettings).
 app.MapGet("/api/notes/media/{fileId}", async (string fileId, BotSettings settings) =>
 {
     try
     {
-        var botClient = new Telegram.Bot.TelegramBotClient(settings.Token);
+        var botClient = new TelegramBotClient(settings.Token);
         var fileInfo = await botClient.GetFile(fileId);
-        string directUrl = $"https://api.telegram.org/file/bot{settings.Token}/{fileInfo.FilePath}";
+        var directUrl = $"https://api.telegram.org/file/bot{settings.Token}/{fileInfo.FilePath}";
 
         return Results.Redirect(directUrl);
     }
@@ -158,4 +162,5 @@ app.MapGet("/api/notes/media/{fileId}", async (string fileId, BotSettings settin
         return Results.BadRequest(new { error = ex.Message });
     }
 });
+
 app.Run();

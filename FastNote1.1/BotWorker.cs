@@ -5,31 +5,70 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
+// ============================================================
+//  BotWorker — фоновый сервис Telegram-бота FastNote
+//
+//  Жизненный цикл:
+//    1. ExecuteAsync     — запускает polling + цикл напоминаний
+//    2. UpdateHandler    — точка входа для всех входящих сообщений
+//    3. CheckRemindersAsync — каждые 30 сек сканирует БД и шлёт уведомления
+//
+//  Фичи обработки сообщений:
+//    /start   — приветствие + inline-кнопки
+//    ++текст  — дописать к последней заметке
+//    .        — поднять заметку в самый верх (Reply на сообщение)
+//    медиа    — сохранение фото/голосовых/кружков/видео
+//
+//  Вспомогательные методы:
+//    ProcessForwardedBatch — сборка пакета пересланных сообщений в одну заметку
+//    TranscribeVoiceAsync  — расшифровка голосовых через Groq Whisper API
+//    ErrorHandler          — логирование ошибок Telegram API
+// ============================================================
+
 namespace FastNote1._1
 {
     public class BotWorker : BackgroundService
     {
+        // ---------------------------------------------------------
+        // Поля
+        // ---------------------------------------------------------
+
         private readonly ITelegramBotClient _botClient;
         private readonly BotSettings _settings;
+
+        // Буфер для группировки пересланных сообщений в пакет
         private static readonly ConcurrentDictionary<long, List<Message>> _forwardQueue = new();
+
+        // По одному семафору на пользователя — защита от гонки при пакетной обработке
         private static readonly ConcurrentDictionary<long, SemaphoreSlim> _locks = new();
-        // Конструктор принимает настройки из DI-контейнера
+
+        // ---------------------------------------------------------
+        // Конструктор
+        // ---------------------------------------------------------
+
+        /// <summary>
+        /// Принимает настройки из DI и создаёт клиент Telegram Bot API.
+        /// </summary>
         public BotWorker(BotSettings settings)
         {
             _settings = settings;
             _botClient = new TelegramBotClient(_settings.Token);
         }
 
+        // ============================================================
+        // ExecuteAsync — точка запуска фонового сервиса
+        // ============================================================
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            // Запускаем polling входящих сообщений (не блокирует поток)
             _botClient.StartReceiving(
                 UpdateHandler,
                 ErrorHandler,
                 cancellationToken: stoppingToken
             );
 
-            // ТЕПЕРЬ ЦИКЛ ЖИВОЙ: Каждые 30 секунд проверяем, не пора ли отправить напоминалку
+            // Основной цикл: проверяем напоминания каждые 30 секунд
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
@@ -41,20 +80,25 @@ namespace FastNote1._1
                     Console.WriteLine($"Ошибка при проверке напоминаний: {ex.Message}");
                 }
 
-                // Проверка каждые 30 секунд (хватает с головой, чтобы не нагружать базу)
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }
 
-        // НОВЫЙ МЕТОД: Сканирует БД и шлет уведомления в Telegram
+        // ============================================================
+        // CheckRemindersAsync — отправка напоминаний
+        // ============================================================
+
+        /// <summary>
+        /// Сканирует БД, находит заметки с истёкшим ReminderAt и отправляет
+        /// уведомления в Telegram. После отправки обнуляет ReminderAt.
+        /// </summary>
         private async Task CheckRemindersAsync(CancellationToken cancellationToken)
         {
             using (var db = new AppDbContext())
             {
-                // ИСПРАВЛЕНО: Вместо DateTime.Now используем DateTime.UtcNow
+                // Сравниваем UTC из базы с UTC текущего момента — совпадают идеально
                 var now = DateTime.UtcNow;
 
-                // Теперь мы сравниваем UTC из базы с UTC текущего момента — они совпадут идеально!
                 var activeReminders = await db.Notes
                     .Where(n => n.ReminderAt != null && n.ReminderAt <= now)
                     .ToListAsync(cancellationToken);
@@ -83,6 +127,7 @@ namespace FastNote1._1
                             cancellationToken: cancellationToken
                         );
 
+                        // Сбрасываем напоминание, чтобы не отправить повторно
                         note.ReminderAt = null;
                     }
                     catch (Exception ex)
@@ -91,6 +136,7 @@ namespace FastNote1._1
                     }
                 }
 
+                // Сохраняем только если было что сбрасывать
                 if (activeReminders.Any())
                 {
                     await db.SaveChangesAsync(cancellationToken);
@@ -98,6 +144,9 @@ namespace FastNote1._1
             }
         }
 
+        // ============================================================
+        // UpdateHandler — диспетчер входящих сообщений
+        // ============================================================
 
         private async Task UpdateHandler(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
@@ -105,8 +154,13 @@ namespace FastNote1._1
 
             long userId = message.Chat.Id;
 
-            // 1. ПРОВЕРКА НА ПЕРЕСЫЛКУ
-            bool isForwarded = message.ForwardFrom != null || message.ForwardFromChat != null || !string.IsNullOrEmpty(message.ForwardSenderName);
+            // ---------------------------------------------------------
+            // Шаг 1. Пересланные сообщения — буферизуем и обрабатываем пакетом
+            // ---------------------------------------------------------
+
+            bool isForwarded = message.ForwardFrom != null
+                             || message.ForwardFromChat != null
+                             || !string.IsNullOrEmpty(message.ForwardSenderName);
 
             if (isForwarded)
             {
@@ -118,6 +172,7 @@ namespace FastNote1._1
                     var list = _forwardQueue.GetOrAdd(userId, new List<Message>());
                     list.Add(message);
 
+                    // Первое сообщение в пакете — запускаем отложенную обработку через 1.5 сек
                     if (list.Count == 1)
                     {
                         _ = Task.Run(async () =>
@@ -142,28 +197,31 @@ namespace FastNote1._1
                 {
                     semaphore.Release();
                 }
-                return; // ВАЖНО: Выходим только если это пересылка!
+                return; // Пересланное — дальше не идём
             }
 
-            // 2. ЕСЛИ МЫ ДОШЛИ СЮДА — ЭТО НЕ ПЕРЕСЫЛКА
-            // Теперь здесь спокойно выполняем твою обычную логику:
-            string? userText = message.Text;
-            // ==========================================
-            // 0. КОМАНДА /start: Приветствие и инструкция
-            // ==========================================
-            if (userText?.ToLower() == "/start")
-                {
-                    string welcomeText =
-                        "👋 <b>Привет! Я твой персональный бот для быстрых заметок FastNote.</b>\n\n" +
-                        "Я помогу тебе мгновенно сохранять мысли, задачи и настраивать напоминания через удобное Мини-Приложение.\n\n" +
-                        "🚀 <b>Как мной пользоваться прямо в чате:</b>\n\n" +
-                        "1️⃣ <b>Просто отправь текст или медиа</b> — я сразу создам новую заметку.\n" +
-                        "2️⃣ <code>++ твой текст</code> — введи это перед сообщением, чтобы <u>дописать</u> текст в самый конец твоей последней заметки, не плодя новые.\n" +
-                        "3️⃣ <b>Перешли сообщение и ответь точкой</b> <code>.</code> — если ты ответишь (сделаешь Reply) одиночной точкой на пересланное сообщение, я найду оригинал этой заметки и <u>подниму её в самый верх</u> списка.\n\n" +
-                        "👇 Нажми на кнопку ниже, чтобы открыть свои заметки или настроить автоматические заголовки!";
+            // ---------------------------------------------------------
+            // Шаг 2. Обычные сообщения — разбираем по типу/команде
+            // ---------------------------------------------------------
 
-                    var inlineKeyboardStart = new InlineKeyboardMarkup(new[]
-                    {
+            string? userText = message.Text;
+
+            // --------------------------------------------------
+            // 0. Команда /start — приветствие и инструкция
+            // --------------------------------------------------
+            if (userText?.ToLower() == "/start")
+            {
+                string welcomeText =
+                    "👋 <b>Привет! Я твой персональный бот для быстрых заметок FastNote.</b>\n\n" +
+                    "Я помогу тебе мгновенно сохранять мысли, задачи и настраивать напоминания через удобное Мини-Приложение.\n\n" +
+                    "🚀 <b>Как мной пользоваться прямо в чате:</b>\n\n" +
+                    "1️⃣ <b>Просто отправь текст или медиа</b> — я сразу создам новую заметку.\n" +
+                    "2️⃣ <code>++ твой текст</code> — введи это перед сообщением, чтобы <u>дописать</u> текст в самый конец твоей последней заметки, не плодя новые.\n" +
+                    "3️⃣ <b>Перешли сообщение и ответь точкой</b> <code>.</code> — если ты ответишь (сделаешь Reply) одиночной точкой на пересланное сообщение, я найду оригинал этой заметки и <u>подниму её в самый верх</u> списка.\n\n" +
+                    "👇 Нажми на кнопку ниже, чтобы открыть свои заметки или настроить автоматические заголовки!";
+
+                var inlineKeyboardStart = new InlineKeyboardMarkup(new[]
+                {
                         new[]
                         {
                             InlineKeyboardButton.WithWebApp("📝 Открыть заметки", new WebAppInfo { Url = _settings.WebAppUrl }),
@@ -171,271 +229,294 @@ namespace FastNote1._1
                         }
                     });
 
-                    await botClient.SendMessage(
-                        chatId: userId,
-                        text: welcomeText,
-                        parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
-                        replyMarkup: inlineKeyboardStart,
-                        cancellationToken: cancellationToken
-                    );
-                    return;
-                }
+                await botClient.SendMessage(
+                    chatId: userId,
+                    text: welcomeText,
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                    replyMarkup: inlineKeyboardStart,
+                    cancellationToken: cancellationToken
+                );
+                return;
+            }
 
-                // ==========================================
-                // 1. ФИЧА «++»: Добавление текста к последней заметке
-                // ==========================================
-                if (userText != null && userText.StartsWith("++"))
+            // --------------------------------------------------
+            // 1. Фича «++» — дописать текст к последней заметке
+            // --------------------------------------------------
+            if (userText != null && userText.StartsWith("++"))
+            {
+                string textToAppend = userText.Substring(2).Trim();
+
+                using (var db = new AppDbContext())
                 {
-                    string textToAppend = userText.Substring(2).Trim();
+                    var lastNote = await db.Notes
+                        .Where(n => n.UserId == userId)
+                        .OrderByDescending(n => n.CreatedAt)
+                        .FirstOrDefaultAsync(cancellationToken);
 
-                    using (var db = new AppDbContext())
+                    if (lastNote != null)
                     {
-                        var lastNote = await db.Notes
-                            .Where(n => n.UserId == userId)
-                            .OrderByDescending(n => n.CreatedAt)
-                            .FirstOrDefaultAsync(cancellationToken);
+                        lastNote.Content += "\n" + textToAppend;
+                        await db.SaveChangesAsync(cancellationToken);
 
-                        if (lastNote != null)
-                        {
-                            lastNote.Content += "\n" + textToAppend;
-                            await db.SaveChangesAsync(cancellationToken);
-
-                            await botClient.SendMessage(
-                                chatId: userId,
-                                text: "Текст успешно добавлен к последней заметке! ➕",
-                                cancellationToken: cancellationToken
-                            );
-                        }
-                        else
-                        {
-                            await botClient.SendMessage(
-                                chatId: userId,
-                                text: "У тебя еще нет заметок, к которым можно что-то добавить.",
-                                cancellationToken: cancellationToken
-                            );
-                        }
-                    }
-                    return;
-                }
-
-                // ==========================================
-                // 2. ФИЧА «.»: Перемещение заметки в самый верх (ТЕПЕРЬ ДЛЯ ВСЕХ ТИПОВ МЕДИА)
-                // ==========================================
-                if (userText == "." && message.ReplyToMessage is { } repliedMsg)
-                {
-                    using (var db = new AppDbContext())
-                    {
-                        IQueryable<Note> query = db.Notes.Where(n => n.UserId == userId);
-
-                        // Определяем, какое именно сообщение переслали
-                        if (repliedMsg.Photo is { } p)
-                        {
-                            var fId = p.Last().FileId;
-                            query = query.Where(n => n.TelegramFileId == fId);
-                        }
-                        else if (repliedMsg.Voice is { } v)
-                        {
-                            query = query.Where(n => n.TelegramFileId == v.FileId);
-                        }
-                        else if (repliedMsg.VideoNote is { } vn)
-                        {
-                            query = query.Where(n => n.TelegramFileId == vn.FileId);
-                        }
-                        else if (repliedMsg.Document is { } d && d.MimeType != null && d.MimeType.StartsWith("image/"))
-                        {
-                            query = query.Where(n => n.TelegramFileId == d.FileId);
-                        }
-                        else if (!string.IsNullOrEmpty(repliedMsg.Text))
-                        {
-                            query = query.Where(n => n.Content.StartsWith(repliedMsg.Text));
-                        }
-                        else
-                        {
-                            await botClient.SendMessage(chatId: userId, text: "Этот тип сообщения не поддерживается для поднятия.", cancellationToken: cancellationToken);
-                            return;
-                        }
-
-                        var existingNotes = await query.OrderBy(n => n.CreatedAt).ToListAsync(cancellationToken);
-
-                        if (existingNotes.Any())
-                        {
-                            var originalNote = existingNotes.First();
-                            originalNote.CreatedAt = DateTime.Now; // Поднимаем наверх
-
-                            // Удаляем дубликаты, если они случайно создались
-                            if (existingNotes.Count > 1)
-                            {
-                                foreach (var dup in existingNotes.Skip(1))
-                                {
-                                    db.Notes.Remove(dup);
-                                }
-                            }
-
-                            await db.SaveChangesAsync(cancellationToken);
-                            await botClient.SendMessage(chatId: userId, text: "Заметка успешно перемещена в самый верх! 🔝", cancellationToken: cancellationToken);
-                        }
-                        else
-                        {
-                            await botClient.SendMessage(chatId: userId, text: "Не найдено сохраненной заметки для этого сообщения.", cancellationToken: cancellationToken);
-                        }
-                    }
-                    return;
-                }
-
-                // ==========================================
-                // 3. УНИВЕРСАЛЬНОЕ СОХРАНЕНИЕ ЗАМЕТОК (ТЕКСТ + МЕДИА)
-                // ==========================================
-                var newNote = new Note
-                {
-                    UserId = userId,
-                    CreatedAt = DateTime.Now,
-                    MediaType = "text"
-                };
-
-                if (!string.IsNullOrEmpty(userText))
-                {
-                    newNote.Content = userText;
-                }
-                else if (message.Photo is { } photos)
-                {
-                    var largestPhoto = photos.Last();
-                    newNote.MediaType = "photo";
-                    newNote.TelegramFileId = largestPhoto.FileId;
-                    newNote.Content = message.Caption ?? "";
-                }
-                else if (message.Document is { } doc && doc.MimeType != null && doc.MimeType.StartsWith("image/"))
-                {
-                    newNote.MediaType = "photo";
-                    newNote.TelegramFileId = doc.FileId;
-                    newNote.Content = message.Caption ?? "";
-                }
-                else if (message.Voice is { } voice)
-                {
-                    newNote.MediaType = "voice";
-                    newNote.TelegramFileId = voice.FileId;
-                    newNote.Duration = voice.Duration;
-
-                    // Проверяем настройку пользователя в базе
-                    bool isTranscriptionEnabled = true;
-                    using (var dbMedia = new AppDbContext())
-                    {
-                        var settings = await dbMedia.UserSettings.FindAsync(userId);
-                        if (settings != null)
-                        {
-                            isTranscriptionEnabled = settings.IsTranscriptionEnabled;
-                        }
-                    }
-
-                    string transcribedText;
-                    if (isTranscriptionEnabled)
-                    {
-                        transcribedText = await TranscribeVoiceAsync(botClient, voice.FileId, cancellationToken);
+                        await botClient.SendMessage(
+                            chatId: userId,
+                            text: "Текст успешно добавлен к последней заметке! ➕",
+                            cancellationToken: cancellationToken
+                        );
                     }
                     else
                     {
-                        transcribedText = "🎙 Голосовое сообщение (Расшифровка отключена в настройках)";
+                        await botClient.SendMessage(
+                            chatId: userId,
+                            text: "У тебя еще нет заметок, к которым можно что-то добавить.",
+                            cancellationToken: cancellationToken
+                        );
+                    }
+                }
+                return;
+            }
+
+            // --------------------------------------------------
+            // 2. Фича «.» — поднять заметку в самый верх
+            //    Reply на сообщение + одиночная точка
+            // --------------------------------------------------
+            if (userText == "." && message.ReplyToMessage is { } repliedMsg)
+            {
+                using (var db = new AppDbContext())
+                {
+                    IQueryable<Note> query = db.Notes.Where(n => n.UserId == userId);
+
+                    // Определяем заметку по типу сообщения, на которое сделан Reply
+                    if (repliedMsg.Photo is { } p)
+                    {
+                        var fId = p.Last().FileId;
+                        query = query.Where(n => n.TelegramFileId == fId);
+                    }
+                    else if (repliedMsg.Voice is { } v)
+                    {
+                        query = query.Where(n => n.TelegramFileId == v.FileId);
+                    }
+                    else if (repliedMsg.VideoNote is { } vn)
+                    {
+                        query = query.Where(n => n.TelegramFileId == vn.FileId);
+                    }
+                    else if (repliedMsg.Document is { } d && d.MimeType != null && d.MimeType.StartsWith("image/"))
+                    {
+                        query = query.Where(n => n.TelegramFileId == d.FileId);
+                    }
+                    else if (!string.IsNullOrEmpty(repliedMsg.Text))
+                    {
+                        query = query.Where(n => n.Content.StartsWith(repliedMsg.Text));
+                    }
+                    else
+                    {
+                        await botClient.SendMessage(chatId: userId, text: "Этот тип сообщения не поддерживается для поднятия.", cancellationToken: cancellationToken);
+                        return;
                     }
 
-                    newNote.Content = !string.IsNullOrEmpty(message.Caption)
-                        ? $"{message.Caption}\n\n{transcribedText}"
-                        : transcribedText;
+                    var existingNotes = await query.OrderBy(n => n.CreatedAt).ToListAsync(cancellationToken);
+
+                    if (existingNotes.Any())
+                    {
+                        var originalNote = existingNotes.First();
+                        originalNote.CreatedAt = DateTime.Now; // Поднимаем наверх обновлением даты
+
+                        // Удаляем дубликаты, если они случайно накопились
+                        if (existingNotes.Count > 1)
+                        {
+                            foreach (var dup in existingNotes.Skip(1))
+                            {
+                                db.Notes.Remove(dup);
+                            }
+                        }
+
+                        await db.SaveChangesAsync(cancellationToken);
+                        await botClient.SendMessage(chatId: userId, text: "Заметка успешно перемещена в самый верх! 🔝", cancellationToken: cancellationToken);
+                    }
+                    else
+                    {
+                        await botClient.SendMessage(chatId: userId, text: "Не найдено сохраненной заметки для этого сообщения.", cancellationToken: cancellationToken);
+                    }
                 }
-                else if (message.VideoNote is { } videoNote)
+                return;
+            }
+
+            // --------------------------------------------------
+            // 3. Универсальное сохранение новой заметки (текст + медиа)
+            // --------------------------------------------------
+
+            var newNote = new Note
+            {
+                UserId = userId,
+                CreatedAt = DateTime.Now,
+                MediaType = "text"
+            };
+
+            if (!string.IsNullOrEmpty(userText))
+            {
+                // Обычное текстовое сообщение
+                newNote.Content = userText;
+            }
+            else if (message.Photo is { } photos)
+            {
+                // Фото — берём самое крупное разрешение из массива
+                var largestPhoto = photos.Last();
+                newNote.MediaType = "photo";
+                newNote.TelegramFileId = largestPhoto.FileId;
+                newNote.Content = message.Caption ?? "";
+            }
+            else if (message.Document is { } doc && doc.MimeType != null && doc.MimeType.StartsWith("image/"))
+            {
+                // Документ с MIME-типом image (картинка без сжатия)
+                newNote.MediaType = "photo";
+                newNote.TelegramFileId = doc.FileId;
+                newNote.Content = message.Caption ?? "";
+            }
+            else if (message.Voice is { } voice)
+            {
+                // Голосовое сообщение — сохраняем и при необходимости расшифровываем
+                newNote.MediaType = "voice";
+                newNote.TelegramFileId = voice.FileId;
+                newNote.Duration = voice.Duration;
+
+                // Читаем настройку транскрибации из БД для этого пользователя
+                bool isTranscriptionEnabled = true;
+                using (var dbMedia = new AppDbContext())
                 {
-                    newNote.MediaType = "video_note";
-                    newNote.TelegramFileId = videoNote.FileId;
-                    newNote.Duration = videoNote.Duration;
-                    newNote.Content = "🔵 Видео-заметка (кружок)";
+                    var settings = await dbMedia.UserSettings.FindAsync(userId);
+                    if (settings != null)
+                    {
+                        isTranscriptionEnabled = settings.IsTranscriptionEnabled;
+                    }
                 }
-                else if (message.Video is { } video)
+
+                string transcribedText;
+                if (isTranscriptionEnabled)
                 {
-                    newNote.MediaType = "video";
-                    newNote.TelegramFileId = video.FileId;
-                    newNote.Duration = video.Duration;
-                    newNote.Content = message.Caption ?? "🎬 Видео";
+                    transcribedText = await TranscribeVoiceAsync(botClient, voice.FileId, cancellationToken);
                 }
                 else
                 {
-                    return;
+                    transcribedText = "🎙 Голосовое сообщение (Расшифровка отключена в настройках)";
                 }
 
-                // Автогенерация заголовка
-                using (var dbMedia = new AppDbContext())
+                newNote.Content = !string.IsNullOrEmpty(message.Caption)
+                    ? $"{message.Caption}\n\n{transcribedText}"
+                    : transcribedText;
+            }
+            else if (message.VideoNote is { } videoNote)
+            {
+                // Видео-кружок
+                newNote.MediaType = "video_note";
+                newNote.TelegramFileId = videoNote.FileId;
+                newNote.Duration = videoNote.Duration;
+                newNote.Content = "🔵 Видео-заметка (кружок)";
+            }
+            else if (message.Video is { } video)
+            {
+                // Обычное видео
+                newNote.MediaType = "video";
+                newNote.TelegramFileId = video.FileId;
+                newNote.Duration = video.Duration;
+                newNote.Content = message.Caption ?? "🎬 Видео";
+            }
+            else
+            {
+                return; // Неподдерживаемый тип — игнорируем
+            }
+
+            // --------------------------------------------------
+            // Авто-генерация заголовка по настройке пользователя
+            // --------------------------------------------------
+            using (var dbMedia = new AppDbContext())
+            {
+                var settingMedia = await dbMedia.UserSettings.FindAsync(userId);
+                string titleTypeMedia = settingMedia?.TitleType ?? "auto";
+
+                if (titleTypeMedia == "auto")
                 {
-                    var settingMedia = await dbMedia.UserSettings.FindAsync(userId);
-                    string titleTypeMedia = settingMedia?.TitleType ?? "auto";
-
-                    if (titleTypeMedia == "auto")
+                    if (!string.IsNullOrWhiteSpace(newNote.Content))
                     {
-                        if (!string.IsNullOrWhiteSpace(newNote.Content))
-                        {
-                            var lines = newNote.Content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                            string smartTitle = lines.Length > 0 ? lines[0] : newNote.Content;
+                        // Берём первую непустую строку, обрезаем до 20 символов
+                        var lines = newNote.Content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                        string smartTitle = lines.Length > 0 ? lines[0] : newNote.Content;
 
-                            if (smartTitle.Length > 20)
-                            {
-                                smartTitle = smartTitle.Substring(0, 20) + "...";
-                            }
-                            newNote.Title = smartTitle;
-                        }
-                        else
+                        if (smartTitle.Length > 20)
                         {
-                            newNote.Title = newNote.MediaType switch
-                            {
-                                "photo" => "📷 Фотозаметка",
-                                "voice" => "🎙 Голосовая заметка",
-                                "video_note" => "🔵 Кружок",
-                                "video" => "🎬 Видео",
-                                _ => "Заметка"
-                            };
+                            smartTitle = smartTitle.Substring(0, 20) + "...";
                         }
-                    }
-                    else if (titleTypeMedia == "date")
-                    {
-                        newNote.Title = newNote.CreatedAt.ToString("dd.MM.yyyy HH:mm");
+                        newNote.Title = smartTitle;
                     }
                     else
                     {
-                        newNote.Title = "Заметка";
+                        // Медиа без подписи — эмодзи-заголовок по типу файла
+                        newNote.Title = newNote.MediaType switch
+                        {
+                            "photo" => "📷 Фотозаметка",
+                            "voice" => "🎙 Голосовая заметка",
+                            "video_note" => "🔵 Кружок",
+                            "video" => "🎬 Видео",
+                            _ => "Заметка"
+                        };
                     }
-
-                    dbMedia.Notes.Add(newNote);
-                    await dbMedia.SaveChangesAsync(cancellationToken);
+                }
+                else if (titleTypeMedia == "date")
+                {
+                    // Дата и время создания как заголовок
+                    newNote.Title = newNote.CreatedAt.ToString("dd.MM.yyyy HH:mm");
+                }
+                else
+                {
+                    newNote.Title = "Заметка";
                 }
 
-                // ==========================================
-                // 4. ОТПРАВКА ФИДБЕКА С ИНЛАЙН-КНОПКАМИ
-                // ==========================================
-                string feedbackText = newNote.MediaType switch
-                {
-                    "photo" => "Фотография успешно сохранена в заметки! 🖼",
-                    "voice" => "Голосовое сообщение добавлено! 🎙",
-                    "video_note" => "Кружок успешно сохранен! 🔵",
-                    "video" => "Видео успешно сохранено! 🎬",
-                    _ => "Заметка сохранена! 📝"
-                };
-
-                // Создаем клавиатуру, подставляя ID созданной заметки (newNote.Id)
-                var inlineKeyboardNormal = new InlineKeyboardMarkup(new[]
-                {
-                    new[]
-                    {
-                        InlineKeyboardButton.WithWebApp("⏰ Добавить напоминание", new WebAppInfo { Url = $"{_settings.WebAppUrl}?noteId={newNote.Id}&action=reminder" }),
-                        InlineKeyboardButton.WithWebApp("📝 Редактировать заметку", new WebAppInfo { Url = $"{_settings.WebAppUrl}?noteId={newNote.Id}" })
-                    }
-                });
-
-                await botClient.SendMessage(
-                    chatId: userId,
-                    text: feedbackText,
-                    replyMarkup: inlineKeyboardNormal, // Прикрепляем кнопки к сообщению
-                    cancellationToken: cancellationToken
-                );
+                dbMedia.Notes.Add(newNote);
+                await dbMedia.SaveChangesAsync(cancellationToken);
             }
-        
+
+            // --------------------------------------------------
+            // 4. Отправка фидбека с inline-кнопками
+            // --------------------------------------------------
+
+            string feedbackText = newNote.MediaType switch
+            {
+                "photo" => "Фотография успешно сохранена в заметки! 🖼",
+                "voice" => "Голосовое сообщение добавлено! 🎙",
+                "video_note" => "Кружок успешно сохранен! 🔵",
+                "video" => "Видео успешно сохранено! 🎬",
+                _ => "Заметка сохранена! 📝"
+            };
+
+            // Подставляем ID только что созданной заметки в ссылку
+            var inlineKeyboardNormal = new InlineKeyboardMarkup(new[]
+            {
+                new[]
+                {
+                    InlineKeyboardButton.WithWebApp("⏰ Добавить напоминание", new WebAppInfo { Url = $"{_settings.WebAppUrl}?noteId={newNote.Id}&action=reminder" }),
+                    InlineKeyboardButton.WithWebApp("📝 Редактировать заметку", new WebAppInfo { Url = $"{_settings.WebAppUrl}?noteId={newNote.Id}" })
+                }
+            });
+
+            await botClient.SendMessage(
+                chatId: userId,
+                text: feedbackText,
+                replyMarkup: inlineKeyboardNormal,
+                cancellationToken: cancellationToken
+            );
+        }
+
+        // ============================================================
+        // ProcessForwardedBatch — сборка пересланных сообщений в заметку
+        // ============================================================
+
+        /// <summary>
+        /// Собирает все сообщения из буфера (пришедшие за ~1.5 сек)
+        /// в одну заметку с объединённым текстом.
+        /// Медиа-вложение берётся только первое (модель хранит один файл на заметку).
+        /// </summary>
         private async Task ProcessForwardedBatch(ITelegramBotClient botClient, long userId, List<Message> messages, CancellationToken ct)
         {
-            // 1. Создаем "мастер-заметку"
+            // Создаём мастер-заметку с временным заголовком
             var newNote = new Note
             {
                 UserId = userId,
@@ -450,13 +531,13 @@ namespace FastNote1._1
                 db.Notes.Add(newNote);
                 await db.SaveChangesAsync(ct);
 
-                // 2. Наполняем контент текстом из всех сообщений
+                // Наполняем контент текстом из всех сообщений, разделяя блоки «---»
                 foreach (var msg in messages)
                 {
                     if (!string.IsNullOrEmpty(msg.Text))
                         newNote.Content += (string.IsNullOrEmpty(newNote.Content) ? "" : "\n---\n") + msg.Text;
 
-                    // Если в пакете есть медиа, берем самое первое (так как твоя модель держит только 1)
+                    // Если в пакете есть медиа, берём самое первое (одно вложение на заметку)
                     if (newNote.TelegramFileId == null)
                     {
                         if (msg.Photo != null) { newNote.TelegramFileId = msg.Photo.Last().FileId; newNote.MediaType = "photo"; }
@@ -469,13 +550,26 @@ namespace FastNote1._1
 
             await botClient.SendMessage(userId, $"✅ Сохранено {messages.Count} сообщений в одну заметку!", cancellationToken: ct);
         }
+
+        // ============================================================
+        // ErrorHandler — обработчик ошибок Telegram API
+        // ============================================================
+
         private Task ErrorHandler(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
         {
-            // Здесь можно логировать системные ошибки Telegram API, если нужно
             Console.WriteLine($"Ошибка Telegram API: {exception.Message}");
             return Task.CompletedTask;
         }
-        // МЕТОД ДЛЯ БЕСПЛАТНОЙ РАСШИФРОВКИ ГОЛОСОВЫХ ЧЕРЕЗ WHISPER
+
+        // ============================================================
+        // TranscribeVoiceAsync — расшифровка голосового через Groq Whisper
+        // ============================================================
+
+        /// <summary>
+        /// Скачивает аудиофайл с серверов Telegram и отправляет в Groq API
+        /// для расшифровки моделью Whisper Large v3 (язык: русский).
+        /// При любой ошибке возвращает fallback-строку вместо исключения.
+        /// </summary>
         private async Task<string> TranscribeVoiceAsync(ITelegramBotClient botClient, string fileId, CancellationToken cancellationToken)
         {
             try
@@ -492,12 +586,12 @@ namespace FastNote1._1
                     return "🎙 Голосовое сообщение (Не удалось скачать аудиофайл)";
                 }
 
-                // 2. Скачиваем аудио в поток памяти (MemoryStream)
+                // 2. Скачиваем аудио в MemoryStream
                 using var audioStream = new MemoryStream();
                 await botClient.DownloadFile(fileInfo.FilePath, audioStream, cancellationToken);
                 audioStream.Position = 0;
 
-                // 3. Готовим HTTP-запрос к API Groq
+                // 3. Готовим HTTP-запрос к Groq API
                 using var httpClient = new HttpClient();
                 httpClient.DefaultRequestHeaders.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _settings.GroqApiKey);
@@ -505,21 +599,20 @@ namespace FastNote1._1
                 using var form = new MultipartFormDataContent();
                 var streamContent = new StreamContent(audioStream);
 
-                // Указываем тип аудио, который присылает Telegram (Ogg Opus)
+                // Telegram присылает голосовые в формате Ogg Opus
                 streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/ogg");
 
                 form.Add(streamContent, "file", "voice.ogg");
-                form.Add(new StringContent("whisper-large-v3"), "model"); // Используем лучшую модель
-                form.Add(new StringContent("ru"), "language");            // Принудительно ставим русский язык
+                form.Add(new StringContent("whisper-large-v3"), "model"); // Лучшая модель Groq для русского
+                form.Add(new StringContent("ru"), "language");            // Принудительно русский язык
 
-                // 4. Отправляем запрос
+                // 4. Отправляем запрос и разбираем JSON-ответ
                 var response = await httpClient.PostAsync("https://api.groq.com/openai/v1/audio/transcriptions", form, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync();
 
-                    // Быстро парсим JSON стандартным System.Text.Json
                     using var doc = System.Text.Json.JsonDocument.Parse(json);
                     if (doc.RootElement.TryGetProperty("text", out var textProp))
                     {
