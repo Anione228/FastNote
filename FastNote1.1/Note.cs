@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using System;
 using System.ComponentModel.DataAnnotations;
 
 public class Note
@@ -19,6 +20,7 @@ public class Note
 
     // Длительность аудио/видео в секундах (для ГС и кружков)
     public int? Duration { get; set; }
+    public bool isPinned { get; set; }     
 }
 
 public class UserSetting

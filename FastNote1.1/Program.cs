@@ -31,6 +31,7 @@ app.MapGet("/api/notes/{userId}", async (long userId) =>
     // чтобы новые и поднятые точкой (.) заметки были в самом верху списка!
     var notes = await db.Notes
         .Where(n => n.UserId == userId)
+        .OrderByDescending(n => n.isPinned)
         .OrderByDescending(n => n.CreatedAt)
         .ToListAsync();
 
@@ -44,7 +45,19 @@ app.MapGet("/api/notes/{userId}", async (long userId) =>
     }
     return Results.Ok(notes);
 });
+// ЭНДПОИНТ ДЛЯ ЗАКРЕПЛЕНИЯ/ОТКРЕПЛЕНИЯ ЗАМЕТКИ
+app.MapPost("/api/notes/pin/{id}", async (int id) =>
+{
+    using var db = new AppDbContext();
+    var note = await db.Notes.FindAsync(id);
+    if (note == null) return Results.NotFound();
 
+    // Просто инвертируем булево значение (был true -> стал false)
+    note.isPinned = !note.isPinned;
+
+    await db.SaveChangesAsync();
+    return Results.Ok(new { isPinned = note.isPinned });
+});
 // Изменение заметки
 app.MapPut("/api/notes/{id}", async (int id, Note updatedNote) =>
 {
@@ -128,6 +141,7 @@ app.MapDelete("/api/notes/{id}", async (int id) =>
     await db.SaveChangesAsync();
     return Results.Ok();
 });
+
 // Эндпоинт для получения прямой ссылки на медиафайл из Телеграма
 app.MapGet("/api/notes/media/{fileId}", async (string fileId, BotSettings settings) =>
 {

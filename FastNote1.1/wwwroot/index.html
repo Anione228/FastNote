@@ -633,6 +633,7 @@
         async function loadNotes() {
             const res = await fetch(`/api/notes/${userId}`);
             const notes = await res.json();
+            notes.sort((a, b) => (b.isPinned || 0) - (a.isPinned || 0));
             const container = document.getElementById('notesContainer');
             container.innerHTML = '';
 
@@ -718,13 +719,17 @@
                                         `;
                     }
                 }
-
+                const pinIcon = note.isPinned ? '📌' : '📍';
                 card.innerHTML = `
-                                    ${mediaBadgeHtml}
-                                    ${cardContentHtml}
-                                    ${reminderHtml}
-                                    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
-                                `;
+    <div class="pin-badge" onclick="togglePinNote(event, ${note.id}, ${note.isPinned || 0})" 
+         style="position: absolute; bottom: 8px; left: 8px; z-index: 5; font-size: 14px; cursor: pointer; padding: 4px; -webkit-tap-highlight-color: transparent;">
+        ${pinIcon}
+    </div>
+    ${mediaBadgeHtml}
+    ${cardContentHtml}
+    ${reminderHtml}
+    <div class="delete-btn" onclick="deleteNote(event, ${note.id})">УДАЛИТЬ ЗАМЕТКУ</div>
+`;
 
                 card.onclick = () => openNote(note);
 
@@ -1113,6 +1118,32 @@
                     card.style.display = "none"; // Скрываем
                 }
             });
+        }
+        //НОВАЯ ФИЯ
+        async function togglePinNote(event, id, currentStatus) {
+            event.stopPropagation(); // Чтобы при клике на булавку не открывалась сама заметка
+
+            const newStatus = currentStatus ? 0 : 1; // Переключаем 0 и 1
+
+            try {
+                const response = await fetch(`/api/notes/pin/${id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isPinned: newStatus })
+                });
+
+                if (response.ok) {
+                    // Вызываем легкую вибрацию на смартфоне в стиле Telegram
+                    if (tg.HapticFeedback) {
+                        tg.HapticFeedback.impactOccurred('light');
+                    }
+                    loadNotes(); // Перезагружаем заметки, чтобы применилась новая сортировка
+                } else {
+                    alert("Не удалось изменить статус закрепления");
+                }
+            } catch (error) {
+                console.error("Ошибка сети:", error);
+            }
         }
         loadNotes();
         loadSettings();
