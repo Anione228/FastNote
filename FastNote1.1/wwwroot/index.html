@@ -67,6 +67,7 @@
             flex-direction: column;
             -webkit-user-select: none;
             user-select: none;
+            
         }
 
             .note-card:active {
@@ -81,6 +82,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             flex-shrink: 0;
+         
         }
 
         .note-content {
@@ -91,6 +93,7 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             flex-grow: 1;
+           
         }
 
         .reminder-badge {
@@ -661,10 +664,16 @@
                 if (isPhotoOnly) {
                     cardContentHtml = `<img src="/api/notes/media/${note.telegramFileId}" alt="Фотозаметка">`;
                 } else {
-                    cardContentHtml = `
-                                        <div class="note-title">${note.title}</div>
-                                        <div class="note-content">${note.content}</div>
-                                    `;
+                    const tempTitle = document.createElement('div');
+                    tempTitle.className = 'note-title';
+                    tempTitle.textContent = note.title;
+
+                    const tempContent = document.createElement('div');
+                    tempContent.className = 'note-content';
+                    tempContent.textContent = note.content;
+
+                    // Объединяем их в одну HTML-строку (внешний HTML)
+                    cardContentHtml = tempTitle.outerHTML + tempContent.outerHTML;
 
                     if (note.mediaType === 'photo' && note.telegramFileId) {
                         cardContentHtml += `<img src="/api/notes/media/${note.telegramFileId}" style="width:100%; border-radius:8px; margin-top:8px; max-height:150px; object-fit:cover;" alt="Фото">`;
