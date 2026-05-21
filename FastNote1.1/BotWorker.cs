@@ -45,10 +45,7 @@ namespace FastNote1._1
         // ---------------------------------------------------------
         // Конструктор
         // ---------------------------------------------------------
-
-        /// <summary>
         /// Принимает настройки из DI и создаёт клиент Telegram Bot API.
-        /// </summary>
         public BotWorker(BotSettings settings)
         {
             _settings = settings;
@@ -87,11 +84,8 @@ namespace FastNote1._1
         // ============================================================
         // CheckRemindersAsync — отправка напоминаний
         // ============================================================
-
-        /// <summary>
         /// Сканирует БД, находит заметки с истёкшим ReminderAt и отправляет
         /// уведомления в Telegram. После отправки обнуляет ReminderAt.
-        /// </summary>
         private async Task CheckRemindersAsync(CancellationToken cancellationToken)
         {
             using (var db = new AppDbContext())
@@ -150,10 +144,198 @@ namespace FastNote1._1
 
         private async Task UpdateHandler(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
+            long myAdminId = 637956329;
             if (update.Message is not { } message) return;
 
             long userId = message.Chat.Id;
+            string? userText = message.Text;
 
+            // -----------------------------------------------------------------
+            // АНТИ-СПАМ / ПРОВЕРКА НА БАН (Для всех, кроме админа)
+            // -----------------------------------------------------------------
+            if (userId != myAdminId)
+            {
+                using (var db = new AppDbContext())
+                {
+                    var settings = await db.UserSettings.FindAsync(userId);
+                    if (settings != null && settings.IsBanned)
+                    {
+                        // Заблокированный пользователь получает отказ и обработка прекращается
+                        await botClient.SendMessage(
+                            chatId: userId,
+                            text: "🚫 <b>Доступ ограничен.</b> Ваш аккаунт заблокирован администратором.",
+                            parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                            cancellationToken: cancellationToken
+                        );
+                        return;
+                    }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // АДМИН-ПАНЕЛЬ (Доступно ТОЛЬКО для пользователя с myAdminId)
+            // -----------------------------------------------------------------
+            if (userId == myAdminId)
+            {
+                // 1. Команда: Список пользователей
+                if (userText?.ToLower() == "/admin_users")
+                {
+                    using (var db = new AppDbContext())
+                    {
+                        // 1. Считаем общую статистику (это всегда полезно админу)
+                        int totalNotes = await db.Notes.CountAsync(cancellationToken);
+
+                        // 2. Получаем только топ-30 самых активных/последних юзеров, чтобы не спамить в чат
+                        var topUsers = await db.Notes
+                            .GroupBy(n => n.UserId)
+                            .Select(g => new { UserId = g.Key, NotesCount = g.Count() })
+                            .OrderByDescending(u => u.NotesCount)
+                            .Take(30)
+                            .ToListAsync(cancellationToken);
+
+                        string response = "<b>👥 Админ-панель: Статистика</b>\n";
+                        response += $"Всего заметок в базе: <code>{totalNotes}</code>\n";
+                        response += $"Уникальных авторов: <code>{topUsers.Count}</code>\n\n";
+                        response += "<b>🔝 Топ-30 активных пользователей:</b>\n";
+
+                        if (!topUsers.Any())
+                        {
+                            response += "В базе данных пока нет ни одной заметки.";
+                        }
+                        else
+                        {
+                            foreach (var u in topUsers)
+                            {
+                                // 1. Проверяем статус бана в бэкапе настроек
+                                var settings = await db.UserSettings.FindAsync(u.UserId);
+                                string banStatus = (settings != null && settings.IsBanned) ? "❌ Забанен" : "✅ Активен";
+
+                                string userInfo = $"<code>{u.UserId}</code>";
+
+                                try
+                                {
+                                    // 2. Запрашиваем данные чата (профиля) у Телеграма
+                                    var chat = await botClient.GetChat(u.UserId, cancellationToken);
+
+                                    string firstName = chat.FirstName ?? "Без имени";
+
+                                    // Если есть юзернейм, оформляем его как кликабельную ссылку @username
+                                    if (!string.IsNullOrEmpty(chat.Username))
+                                    {
+                                        userInfo = $"👤 <b>{firstName}</b> (<a href=\"https://t.me/{chat.Username}\">@{chat.Username}</a>) | ID: <code>{u.UserId}</code>";
+                                    }
+                                    else
+                                    {
+                                        // Если юзернейма нет, выводим только имя и ID
+                                        userInfo = $"👤 <b>{firstName}</b> | ID: <code>{u.UserId}</code>";
+                                    }
+                                }
+                                catch (Exception)
+                                {
+                                    // Улавливаем ошибку, если пользователь скрыл профиль или удалил диалог с ботом
+                                    userInfo = $"👤 <i>Скрытый профиль</i> | ID: <code>{u.UserId}</code>";
+                                }
+
+                                // Собираем общую строку ответа для админа
+                                response += $"• {userInfo} | Заметок: <b>{u.NotesCount}</b> | {banStatus}\n";
+                            }
+                        }
+
+                        await botClient.SendMessage(
+                            chatId: myAdminId,
+                            text: response,
+                            parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                            cancellationToken: cancellationToken
+                        );
+                    }
+                    return;
+                }
+
+                // 2. Команда: Заблокировать пользователя (/ban 111222333)
+                if (userText != null && userText.StartsWith("/ban "))
+                {
+                    var targetIdStr = userText.Replace("/ban ", "").Trim();
+                    if (long.TryParse(targetIdStr, out long targetId))
+                    {
+                        using (var db = new AppDbContext())
+                        {
+                            var settings = await db.UserSettings.FindAsync(targetId);
+                            if (settings == null)
+                            {
+                                // Если записи настроек нет, создаем ее, чтобы зафиксировать бан
+                                settings = new UserSetting { UserId = targetId, TitleType = "auto", IsTranscriptionEnabled = true };
+                                db.UserSettings.Add(settings);
+                            }
+
+                            settings.IsBanned = true;
+                            await db.SaveChangesAsync(cancellationToken);
+                            await botClient.SendMessage(chatId: myAdminId, text: $"🚫 Пользователь <code>{targetId}</code> успешно заблокирован.", parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        await botClient.SendMessage(chatId: myAdminId, text: "❌ Неверный формат. Используйте: <code>/ban ID</code>", parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: cancellationToken);
+                    }
+                    return;
+                }
+
+                // 3. Команда: Разблокировать пользователя (/unban 111222333)
+                if (userText != null && userText.StartsWith("/unban "))
+                {
+                    var targetIdStr = userText.Replace("/unban ", "").Trim();
+                    if (long.TryParse(targetIdStr, out long targetId))
+                    {
+                        using (var db = new AppDbContext())
+                        {
+                            var settings = await db.UserSettings.FindAsync(targetId);
+                            if (settings != null)
+                            {
+                                settings.IsBanned = false;
+                                await db.SaveChangesAsync(cancellationToken);
+                                await botClient.SendMessage(chatId: myAdminId, text: $"✅ Пользователь <code>{targetId}</code> успешно разблокирован.", parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: cancellationToken);
+                            }
+                            else
+                            {
+                                await botClient.SendMessage(chatId: myAdminId, text: "Пользователь не найден в базе данных.", cancellationToken: cancellationToken);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        await botClient.SendMessage(chatId: myAdminId, text: "❌ Неверный формат. Используйте: <code>/unban ID</code>", parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: cancellationToken);
+                    }
+                    return;
+                }
+
+                // 4. Команда: Отправить смс от имени бота (/send 111222333 Привет!)
+                if (userText != null && userText.StartsWith("/send "))
+                {
+                    var parts = userText.Split(' ', 3);
+                    if (parts.Length >= 3 && long.TryParse(parts[1], out long targetId))
+                    {
+                        string messageToUser = parts[2];
+                        try
+                        {
+                            await botClient.SendMessage(
+                                chatId: targetId,
+                                text: $"💬 <b>Сообщение от администрации FastNote:</b>\n\n{messageToUser}",
+                                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                                cancellationToken: cancellationToken
+                            );
+                            await botClient.SendMessage(chatId: myAdminId, text: "✅ Сообщение успешно доставлено пользователю.", cancellationToken: cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            await botClient.SendMessage(chatId: myAdminId, text: $"❌ Ошибка отправки (возможно, бот заблокирован пользователем): {ex.Message}", cancellationToken: cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        await botClient.SendMessage(chatId: myAdminId, text: "❌ Неверный формат. Используйте: <code>/send ID Текст сообщения</code>", parseMode: Telegram.Bot.Types.Enums.ParseMode.Html, cancellationToken: cancellationToken);
+                    }
+                    return;
+                }
+            }
             // ---------------------------------------------------------
             // Шаг 1. Пересланные сообщения — буферизуем и обрабатываем пакетом
             // ---------------------------------------------------------
@@ -204,7 +386,6 @@ namespace FastNote1._1
             // Шаг 2. Обычные сообщения — разбираем по типу/команде
             // ---------------------------------------------------------
 
-            string? userText = message.Text;
 
             // --------------------------------------------------
             // 0. Команда /start — приветствие и инструкция
@@ -509,11 +690,9 @@ namespace FastNote1._1
         // ProcessForwardedBatch — сборка пересланных сообщений в заметку
         // ============================================================
 
-        /// <summary>
         /// Собирает все сообщения из буфера (пришедшие за ~1.5 сек)
         /// в одну заметку с объединённым текстом.
         /// Медиа-вложение берётся только первое (модель хранит один файл на заметку).
-        /// </summary>
         private async Task ProcessForwardedBatch(ITelegramBotClient botClient, long userId, List<Message> messages, CancellationToken ct)
         {
             // Создаём мастер-заметку с временным заголовком
@@ -565,11 +744,9 @@ namespace FastNote1._1
         // TranscribeVoiceAsync — расшифровка голосового через Groq Whisper
         // ============================================================
 
-        /// <summary>
         /// Скачивает аудиофайл с серверов Telegram и отправляет в Groq API
         /// для расшифровки моделью Whisper Large v3 (язык: русский).
         /// При любой ошибке возвращает fallback-строку вместо исключения.
-        /// </summary>
         private async Task<string> TranscribeVoiceAsync(ITelegramBotClient botClient, string fileId, CancellationToken cancellationToken)
         {
             try

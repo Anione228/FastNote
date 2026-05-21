@@ -30,8 +30,14 @@ app.UseFileServer();
 app.MapGet("/api/notes/{userId}", async (long userId) =>
 {
     using var db = new AppDbContext();
+    //Проверяем, не заблокирован ли пользователь
+    var settings = await db.UserSettings.FindAsync(userId);
+    if (settings != null && settings.IsBanned)
+    {
+        return Results.Json(new { error = "Вы заблокированы в системе" }, statusCode: 403);
+    }
 
-var notes = await db.Notes
+    var notes = await db.Notes
     .Where(n => n.UserId == userId)
     .OrderByDescending(n => n.isPinned)
     .OrderByDescending(n => n.CreatedAt)
@@ -50,7 +56,10 @@ return Results.Ok(notes);
 app.MapPost("/api/notes", async (Note note) =>
 {
     using var db = new AppDbContext();
-note.CreatedAt = DateTime.UtcNow.AddHours(3);
+
+    
+
+    note.CreatedAt = DateTime.UtcNow.AddHours(3);
 db.Notes.Add(note);
 await db.SaveChangesAsync();
 return Results.Ok(note);

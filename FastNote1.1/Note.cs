@@ -27,6 +27,7 @@ public class UserSetting
 {
     [Key]
     public long UserId { get; set; }
+    public bool IsBanned { get; set; } = false;
     public string TitleType { get; set; } = "auto"; // "auto" (первая строка) или "date" (дата)
     public bool IsTranscriptionEnabled { get; set; } = true; // По умолчанию включено
 }
